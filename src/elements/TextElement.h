@@ -8,7 +8,9 @@ public:
     std::string text     = "Text";
     int         fontSize = 30;    // in dots (ZPL ^A font height)
     int         fontWidth = 0;   // 0 = same as fontSize
-    std::string fontPath = "";   // empty = built-in scalable ^A0
+    bool        fontSizeLinked = false; // link height and width together
+    std::string fontPath = "";   // printer font path for ZPL output (e.g. "E:ARIALR.FNT")
+    std::string fontName = "";   // system font face name for canvas rendering (empty = default)
     bool        bold     = false;
     bool        italic   = false;
     int         rotation = 0;    // 0, 90, 180, 270
@@ -19,6 +21,10 @@ public:
     int  fieldBlockMaxLines  = 1;
     int  fieldBlockLineSpacing = 0;
     int  fieldBlockJustify   = 0;  // 0=L 1=R 2=C 3=J
+
+    // When true, w/h are overwritten each paint from measured text extent.
+    // Set to false by the user when they manually resize the element.
+    bool autoSize = true;
 
     TextElement() { w = 200; h = 40; }
 

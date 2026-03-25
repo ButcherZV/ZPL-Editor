@@ -14,8 +14,13 @@ std::string ZPLSerializer::Serialize(
     if (config.marginLeft || config.marginTop)
         oss << "^LH" << config.marginLeft << "," << config.marginTop << "\n";
 
-    // Print width (total width in dots)
-    oss << "^PW" << config.totalWidth() << "\n";
+    // Print width: full media width covering all label columns.
+    // ZPL has no dedicated "labels per row" command — the way to print N labels
+    // side-by-side is to set ^PW = N × singleWidth and repeat all field commands
+    // at x + col × singleWidth for each column.
+    int lpr      = std::max(1, config.labelsPerRow);
+    int singleW  = config.totalWidth();
+    oss << "^PW" << (singleW * lpr) << "\n";
 
     // Label length (total height in dots)
     oss << "^LL" << config.totalHeight() << "\n";
@@ -23,9 +28,26 @@ std::string ZPLSerializer::Serialize(
     // UTF-8 encoding
     oss << "^CI28\n";
 
-    // Elements
-    for (const auto& el : elements)
-        oss << el->GetZPL() << "\n";
+    // Elements — emitted once per column with an x-offset.
+    for (int col = 0; col < lpr; ++col)
+    {
+        int xOff = col * singleW;
+        for (const auto& el : elements)
+        {
+            if (xOff == 0)
+            {
+                // First column: emit as-is.
+                oss << el->GetZPL() << "\n";
+            }
+            else
+            {
+                // Mirror columns: temporarily clone and offset.
+                auto copy = el->Clone();
+                copy->x += xOff;
+                oss << copy->GetZPL() << "\n";
+            }
+        }
+    }
 
     // Label end
     oss << "^XZ\n";

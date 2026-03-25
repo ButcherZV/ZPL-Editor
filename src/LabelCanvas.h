@@ -41,8 +41,12 @@ public:
     // Execute a command and notify listeners
     void ExecuteCommand(std::unique_ptr<Command> cmd);
 
-    // Current selection
+    // Primary selection (properties panel / resize handles)
     LabelElement* GetSelected() const { return m_selected; }
+
+    // Full multi-selection
+    const std::vector<LabelElement*>& GetSelection() const { return m_selection; }
+    bool IsSelected(LabelElement* el) const;
 
     // Grid snapping
     void SetSnapToGrid(bool snap)   { m_snapToGrid = snap; }
@@ -65,14 +69,21 @@ public:
     void SetZoom(double zoom);
     double GetZoom() const { return m_zoom; }
 
+    // Mark the undo history as clean (call after save or load).
+    void MarkHistoryClean();
+    // Returns true if content has changed since the last MarkHistoryClean().
+    bool IsModified() const;
+
     // Convert canvas pixel coords → label dot coords
     wxPoint PixelToDot(wxPoint px) const;
     // Convert label dot coords → canvas pixel coords
     wxPoint DotToPixel(wxPoint dot) const;
 
 private:
-    static constexpr int   HANDLE_SIZE   = 8;
+    static constexpr int   HANDLE_SIZE       = 8;   // visual drawn square (half-side × 2)
+    static constexpr int   HANDLE_HIT_RADIUS = 12;  // hit-test radius; larger = easier to grab
     static constexpr int   RULER_SIZE    = 20;
+    static constexpr int   PAN_MARGIN    = 400;  // extra virtual space around the label for panning
     static constexpr double ZOOM_STEP    = 1.25;
     static constexpr double ZOOM_MIN     = 0.1;
     static constexpr double ZOOM_MAX     = 10.0;
@@ -84,6 +95,7 @@ private:
     void DrawGrid(wxDC& dc);
     void DrawElements(wxDC& dc);
     void DrawSelectionHandles(wxDC& dc, LabelElement* el);
+    void DrawSelectionOutline(wxDC& dc, LabelElement* el);
     void DrawRulers(wxDC& dc);
 
     // Mouse
@@ -94,6 +106,11 @@ private:
     void OnMiddleDown(wxMouseEvent&);
     void OnMiddleUp(wxMouseEvent&);
     void OnKeyDown(wxKeyEvent&);
+
+    // Overridden to prevent ScrollWindow() BitBlt artefacts on the ruler overlay.
+    // Every scroll path (scrollbars, Scroll() API, middle-mouse pan) goes through
+    // this method, so a single Freeze/Refresh/Thaw here covers all cases.
+    void ScrollWindow(int dx, int dy, const wxRect* rect = nullptr) override;
     void OnContextMenu(wxContextMenuEvent&);
     void OnCtxDelete(wxCommandEvent&);
     void OnCtxDuplicate(wxCommandEvent&);
@@ -121,12 +138,14 @@ private:
     std::unique_ptr<CommandHistory>            m_history;
 
     // Interaction state
-    LabelElement*  m_selected       = nullptr;
-    int            m_dragHandle     = -1;
-    bool           m_dragging       = false;
-    wxPoint        m_dragStartPx;
-    wxPoint        m_dragOrigDot;
-    wxSize         m_dragOrigSize;
+    LabelElement*              m_selected       = nullptr;  // primary selection
+    std::vector<LabelElement*> m_selection;                 // all selected elements
+    int                        m_dragHandle     = -1;
+    bool                       m_dragging       = false;
+    wxPoint                    m_dragStartPx;
+    wxPoint                    m_dragOrigDot;
+    wxSize                     m_dragOrigSize;
+    std::vector<wxPoint>       m_dragOrigDots;              // per-element for multi-drag
 
     wxPoint m_cursorDot = {-1, -1};
 
@@ -134,6 +153,11 @@ private:
     bool    m_panning        = false;
     wxPoint m_panStartPx;
     wxPoint m_panStartScroll;
+
+    // Rubber-band marquee selection
+    bool    m_marquee        = false;
+    wxPoint m_marqueeStart;  // client coords where drag began
+    wxPoint m_marqueeEnd;    // current client coords during drag
 
     // Clipboard (single element)
     std::shared_ptr<LabelElement> m_clipboard;

@@ -2,6 +2,7 @@
 #include <wx/image.h>
 #include <wx/zstream.h>
 #include <wx/mstream.h>
+#include <wx/base64.h>
 #include <sstream>
 #include <iomanip>
 #include <vector>
@@ -31,40 +32,63 @@ void ImageElement::Draw(wxDC& dc, wxPoint off, double zoom) const
     }
 }
 
+// CRC-16/CCITT-FALSE (poly=0x1021, init=0xFFFF) — used by Zebra Z64
+static uint16_t crc16_z64(const unsigned char* data, size_t len)
+{
+    uint16_t crc = 0xFFFF;
+    for (size_t i = 0; i < len; ++i)
+    {
+        crc ^= static_cast<uint16_t>(data[i]) << 8;
+        for (int bit = 0; bit < 8; ++bit)
+            crc = (crc & 0x8000) ? (crc << 1) ^ 0x1021 : crc << 1;
+    }
+    return crc;
+}
+
 std::string ImageElement::GetZPL() const
 {
     if (!bitmap.IsOk()) return "";
 
-    // Convert bitmap to mono and encode as Z64/ASCII hex for ^GF
+    // Scale to element size and convert to mono
     wxImage img = bitmap.ConvertToImage().Scale(w, h).ConvertToGreyscale();
-    int bytesPerRow = (w + 7) / 8;
-    int totalBytes  = bytesPerRow * h;
+    int bytesPerRow   = (w + 7) / 8;
+    int totalUncomp   = bytesPerRow * h;
 
-    std::ostringstream hex;
+    // Build raw monochrome bitmap bytes (1 = dark pixel in ZPL)
+    std::vector<uint8_t> raw(static_cast<size_t>(totalUncomp), 0);
     for (int row = 0; row < h; ++row)
     {
-        unsigned char byte = 0;
-        int bit = 7;
         for (int col = 0; col < w; ++col)
         {
-            unsigned char grey = img.GetRed(col, row);
-            if (grey < 128) byte |= (1 << bit);  // dark pixel = 1 in ZPL
-            --bit;
-            if (bit < 0 || col == w - 1)
-            {
-                hex << std::hex << std::uppercase
-                    << std::setw(2) << std::setfill('0')
-                    << static_cast<int>(byte);
-                byte = 0;
-                bit  = 7;
-            }
+            if (img.GetRed(col, row) < 128)
+                raw[static_cast<size_t>(row * bytesPerRow + col / 8)]
+                    |= static_cast<uint8_t>(1 << (7 - col % 8));
         }
     }
 
+    // Zlib-compress (standard zlib header, deflate body)
+    wxMemoryOutputStream mOut;
+    {
+        wxZlibOutputStream zOut(mOut, 6, wxZLIB_ZLIB);
+        zOut.Write(raw.data(), raw.size());
+    } // destructor flushes and finalises the zlib stream
+
+    wxFileOffset compLen = mOut.GetLength();
+    std::vector<uint8_t> compData(static_cast<size_t>(compLen));
+    mOut.CopyTo(compData.data(), static_cast<size_t>(compLen));
+
+    // Base64-encode the compressed data
+    wxString b64wx = wxBase64Encode(compData.data(), compData.size());
+    std::string b64 = b64wx.ToStdString();
+
+    // CRC-16 over the base64 string
+    uint16_t crc = crc16_z64(reinterpret_cast<const unsigned char*>(b64.data()), b64.size());
+
     std::ostringstream oss;
     oss << "^FO" << x << "," << y
-        << "^GFA," << totalBytes << "," << totalBytes << "," << bytesPerRow
-        << "," << hex.str()
+        << "^GFA," << totalUncomp << "," << compData.size() << "," << bytesPerRow
+        << ",:Z64:" << b64 << ":"
+        << std::hex << std::uppercase << std::setw(4) << std::setfill('0') << crc
         << "^FS";
     return oss.str();
 }

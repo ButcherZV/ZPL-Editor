@@ -109,6 +109,7 @@ enum class StrId
     PROP_IMAGE_ELEM,
     PROP_FILE_PATH,
     PROP_FONT_WIDTH,
+    PROP_FONT_SIZE_LINKED,
     PROP_FONT_PATH,
     PROP_BOLD,
     PROP_ITALIC,
@@ -149,12 +150,15 @@ enum class StrId
     BTN_CREATE,
     BTN_CANCEL,
     BTN_OK,
+    BTN_YES,
+    BTN_NO,
 
     // ── File dialogs ─────────────────────────────────────────────────────────
     DLG_OPEN_TITLE,
     DLG_SAVE_TITLE,
     DLG_CHOOSE_IMAGE,
     FILE_FILTER_ZPL,
+    FILE_FILTER_ZPL_SAVE,
     FILE_FILTER_IMAGE,
 
     // ── Error messages ────────────────────────────────────────────────────────
@@ -188,6 +192,60 @@ enum class StrId
     CTX_BRING_FRONT,
     CTX_SEND_BACK,
     CTX_PASTE,
+
+    // ── Main toolbar tooltips ────────────────────────────────────────────────
+    TB_NEW,
+    TB_OPEN,
+    TB_SAVE,
+    TB_UNDO,
+    TB_REDO,
+    TB_ALIGN_LEFT,
+    TB_ALIGN_RIGHT,
+    TB_ALIGN_TOP,
+    TB_ALIGN_BOTTOM,
+    TB_ALIGN_CENTERH,
+    TB_ALIGN_CENTERV,
+    TB_ZOOM_IN,
+    TB_ZOOM_OUT,
+    TB_ZOOM_FIT,
+
+    // ── Properties panel (additional) ────────────────────────────────────
+    PROP_FONTS_CATEGORY,
+    PROP_PRINTER_FONT,
+    PROP_DISPLAY_FONT,
+    PROP_FONT_DEFAULT,
+    PROP_LINE_SPACING,
+    PROP_JUSTIFY_LEFT,
+    PROP_JUSTIFY_RIGHT,
+    PROP_JUSTIFY_CENTRE,
+    PROP_JUSTIFY_JUSTIFIED,
+
+    // ── DPI selection dialog (shown when opening a ZPL file) ───────────────
+    DPI_DLG_TITLE,
+    DPI_DLG_MSG,
+    DPI_CHOICE_152,
+    DPI_CHOICE_203,
+    DPI_CHOICE_300,
+    DPI_CHOICE_600,
+
+    // ── Options menu ───────────────────────────────────────────────────
+    MENU_OPTIONS_MENU,      // top-level menu bar title
+    MENU_UNITS,
+    MENU_UNITS_METRIC,
+    MENU_UNITS_IMPERIAL,
+
+    // ── Grid size submenu ──────────────────────────────────────────────────
+    MENU_GRID_SIZE,
+    MENU_GRID_2,
+    MENU_GRID_5,
+    MENU_GRID_10,
+    MENU_GRID_CUSTOM,
+    MENU_GRID_CUSTOM_N,    // format string: "Custom (%d dots)"
+    MENU_GRID_DLG_TITLE,
+    MENU_GRID_DLG_MSG,
+
+    UNSAVED_TITLE,
+    UNSAVED_MSG,
 
     COUNT   // must be last
 };

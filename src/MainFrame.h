@@ -55,10 +55,19 @@ private:
 
         ID_LANG_ENGLISH   = wxID_HIGHEST + 40,
         ID_LANG_SERBIAN,
+
+        ID_UNITS_METRIC   = wxID_HIGHEST + 50,
+        ID_UNITS_IMPERIAL,
+
+        ID_GRID_2         = wxID_HIGHEST + 60,
+        ID_GRID_5,
+        ID_GRID_10,
+        ID_GRID_CUSTOM,
     };
 
     void BuildMenuBar();
     void BuildToolBar();
+    void RefreshToolBar();
     void BuildPanels();
     void LoadFile(const wxString& path);  // shared open logic
 
@@ -87,7 +96,16 @@ private:
     void OnClose(wxCloseEvent&);
     void OnCanvasChanged(wxCommandEvent&);
     void OnLanguage(wxCommandEvent&);
+    void OnUnits(wxCommandEvent&);
+    void OnGridSize(wxCommandEvent&);
     void OnCanvasMouseMove(wxMouseEvent&);
+
+    // Updates status bar field 1 with dots + unit-specific dimensions.
+    void UpdateLabelStatus();
+    // Updates the window title, appending '*' if there are unsaved changes.
+    void UpdateTitle();
+    // Prompts to save if dirty. Returns true if it's safe to proceed.
+    bool PromptSaveIfDirty();
 
     wxAuiManager     m_auiMgr;
     LabelCanvas*     m_canvas     = nullptr;

@@ -8,6 +8,7 @@
 #include "elements/ImageElement.h"
 #include "commands/EditPropertyCommand.h"
 #include "I18n.h"
+#include <wx/fontenum.h>
 
 wxBEGIN_EVENT_TABLE(PropertiesPanel, wxPanel)
     EVT_PG_CHANGED(wxID_ANY, PropertiesPanel::OnPropertyChanged)
@@ -76,7 +77,30 @@ void PropertiesPanel::PopulateText(LabelElement* elBase)
     m_grid->Append(new wxStringProperty(TR(PROP_CONTENT),    "text",     wxString::FromUTF8(el->text)));
     m_grid->Append(new wxIntProperty(   TR(PROP_FONT_SIZE),  "fontSize", el->fontSize));
     m_grid->Append(new wxIntProperty(   TR(PROP_FONT_WIDTH), "fontWidth", el->fontWidth));
-    m_grid->Append(new wxStringProperty(TR(PROP_FONT_PATH),  "fontPath",  wxString::FromUTF8(el->fontPath)));
+    m_grid->Append(new wxBoolProperty(  TR(PROP_FONT_SIZE_LINKED), "fontSizeLinked", el->fontSizeLinked));
+    m_grid->SetPropertyAttribute("fontSizeLinked", wxPG_BOOL_USE_CHECKBOX, true);
+
+    // Fonts category: printer font for ZPL output + system font for canvas rendering
+    m_grid->Append(new wxPropertyCategory(TR(PROP_FONTS_CATEGORY)));
+    m_grid->Append(new wxStringProperty(TR(PROP_PRINTER_FONT), "fontPath", wxString::FromUTF8(el->fontPath)));
+    {
+        wxArrayString faces = wxFontEnumerator::GetFacenames(); faces.Sort();
+        wxArrayString fontChoices; wxArrayInt fontValues;
+        fontChoices.Add(TR(PROP_FONT_DEFAULT)); fontValues.Add(0);
+        for (size_t i = 0; i < faces.size(); ++i)
+        {
+            fontChoices.Add(faces[i]);
+            fontValues.Add(static_cast<int>(i) + 1);
+        }
+        wxString curFace = wxString::FromUTF8(el->fontName);
+        int selVal = 0;
+        if (!el->fontName.empty())
+        {
+            int idx = faces.Index(curFace);
+            if (idx != wxNOT_FOUND) selVal = idx + 1;
+        }
+        m_grid->Append(new wxEnumProperty(TR(PROP_DISPLAY_FONT), "fontName", fontChoices, fontValues, selVal));
+    }
     m_grid->Append(new wxBoolProperty(  TR(PROP_BOLD),       "bold",      el->bold));
     m_grid->Append(new wxBoolProperty(  TR(PROP_ITALIC),     "italic",    el->italic));
     m_grid->SetPropertyAttribute("bold",   wxPG_BOOL_USE_CHECKBOX, true);
@@ -93,10 +117,11 @@ void PropertiesPanel::PopulateText(LabelElement* elBase)
     m_grid->Append(new wxBoolProperty(TR(PROP_FIELD_BLOCK),  "useFieldBlock",      el->useFieldBlock));
     m_grid->Append(new wxIntProperty( TR(PROP_FB_WIDTH),     "fieldBlockWidth",    el->fieldBlockWidth));
     m_grid->Append(new wxIntProperty( TR(PROP_FB_MAX_LINES), "fieldBlockMaxLines", el->fieldBlockMaxLines));
-    m_grid->Append(new wxIntProperty( "Line Spacing (dots)", "fieldBlockLineSpacing", el->fieldBlockLineSpacing));
+    m_grid->Append(new wxIntProperty( TR(PROP_LINE_SPACING),  "fieldBlockLineSpacing", el->fieldBlockLineSpacing));
     m_grid->SetPropertyAttribute("useFieldBlock", wxPG_BOOL_USE_CHECKBOX, true);
-    wxArrayString justChoices; justChoices.Add("Left"); justChoices.Add("Right");
-                               justChoices.Add("Centre"); justChoices.Add("Justified");
+    wxArrayString justChoices;
+    justChoices.Add(TR(PROP_JUSTIFY_LEFT));      justChoices.Add(TR(PROP_JUSTIFY_RIGHT));
+    justChoices.Add(TR(PROP_JUSTIFY_CENTRE));    justChoices.Add(TR(PROP_JUSTIFY_JUSTIFIED));
     wxArrayInt    justValues;  for (int i = 0; i < 4; ++i) justValues.Add(i);
     m_grid->Append(new wxEnumProperty(TR(PROP_FB_JUSTIFY), "fieldBlockJustify",
                                       justChoices, justValues, el->fieldBlockJustify));
@@ -213,6 +238,13 @@ void PropertiesPanel::OnPropertyChanged(wxPropertyGridEvent& evt)
             int o = t->fontSize, n = static_cast<int>(value.GetLong());
             m_canvas->ExecuteCommand(std::make_unique<EditPropertyCommand<int>>(
                 [t]{ return t->fontSize; }, [t](int v){ t->fontSize = v; }, o, n));
+            if (t->fontSizeLinked)
+            {
+                int ow = t->fontWidth;
+                m_canvas->ExecuteCommand(std::make_unique<EditPropertyCommand<int>>(
+                    [t]{ return t->fontWidth; }, [t](int v){ t->fontWidth = v; }, ow, n));
+                m_grid->SetPropertyValue("fontWidth", n);
+            }
         }
     }
     else if (name == "rotation")
@@ -231,6 +263,30 @@ void PropertiesPanel::OnPropertyChanged(wxPropertyGridEvent& evt)
             int o = t->fontWidth, n = static_cast<int>(value.GetLong());
             m_canvas->ExecuteCommand(std::make_unique<EditPropertyCommand<int>>(
                 [t]{ return t->fontWidth; }, [t](int v){ t->fontWidth = v; }, o, n));
+            if (t->fontSizeLinked)
+            {
+                int oh = t->fontSize;
+                m_canvas->ExecuteCommand(std::make_unique<EditPropertyCommand<int>>(
+                    [t]{ return t->fontSize; }, [t](int v){ t->fontSize = v; }, oh, n));
+                m_grid->SetPropertyValue("fontSize", n);
+            }
+        }
+    }
+    else if (name == "fontSizeLinked")
+    {
+        if (auto* t = dynamic_cast<TextElement*>(el))
+        {
+            bool o = t->fontSizeLinked, n = value.GetBool();
+            m_canvas->ExecuteCommand(std::make_unique<EditPropertyCommand<bool>>(
+                [t]{ return t->fontSizeLinked; }, [t](bool v){ t->fontSizeLinked = v; }, o, n));
+            // When linking is enabled, immediately sync width = height
+            if (n)
+            {
+                int ow = t->fontWidth;
+                m_canvas->ExecuteCommand(std::make_unique<EditPropertyCommand<int>>(
+                    [t]{ return t->fontWidth; }, [t](int v){ t->fontWidth = v; }, ow, t->fontSize));
+                m_grid->SetPropertyValue("fontWidth", t->fontSize);
+            }
         }
     }
     else if (name == "fontPath")
@@ -240,6 +296,17 @@ void PropertiesPanel::OnPropertyChanged(wxPropertyGridEvent& evt)
             std::string o = t->fontPath, n = value.GetString().ToUTF8().data();
             m_canvas->ExecuteCommand(std::make_unique<EditPropertyCommand<std::string>>(
                 [t]{ return t->fontPath; }, [t](std::string v){ t->fontPath = v; }, o, n));
+        }
+    }
+    else if (name == "fontName")
+    {
+        if (auto* t = dynamic_cast<TextElement*>(el))
+        {
+            std::string o = t->fontName;
+            wxString label = evt.GetProperty()->GetValueAsString();
+            std::string n = (label == "(default)") ? "" : label.ToUTF8().data();
+            m_canvas->ExecuteCommand(std::make_unique<EditPropertyCommand<std::string>>(
+                [t]{ return t->fontName; }, [t](std::string v){ t->fontName = v; }, o, n));
         }
     }
     else if (name == "bold")
@@ -275,7 +342,7 @@ void PropertiesPanel::OnPropertyChanged(wxPropertyGridEvent& evt)
         {
             int o = t->fieldBlockWidth, n = static_cast<int>(value.GetLong());
             m_canvas->ExecuteCommand(std::make_unique<EditPropertyCommand<int>>(
-                [t]{ return t->fieldBlockWidth; }, [t](int v){ t->fieldBlockWidth = v; }, o, n));
+                [t]{ return t->fieldBlockWidth; }, [t](int v){ t->fieldBlockWidth = v; t->w = v; }, o, n));
         }
     }
     else if (name == "fieldBlockMaxLines")

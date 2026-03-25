@@ -19,6 +19,45 @@ static std::string trim(const std::string& s)
     return s.substr(b, e - b + 1);
 }
 
+static std::string GuessFontName(const std::string& printerFontPath)
+{
+    if (printerFontPath.empty()) return "";
+    std::string name = printerFontPath;
+    // Strip drive/path prefix (e.g. "E:" or "R:")
+    auto colon = name.rfind(':');
+    if (colon != std::string::npos) name = name.substr(colon + 1);
+    // Strip extension
+    auto dot = name.rfind('.');
+    if (dot != std::string::npos) name = name.substr(0, dot);
+    // Uppercase for lookup
+    std::string upper = name;
+    for (auto& c : upper) c = static_cast<char>(std::toupper(c));
+    // Known printer-font → system-font mappings
+    static const std::pair<const char*, const char*> kMap[] = {
+        {"ARIALR",  "Arial"}, {"ARIALB",  "Arial"}, {"ARIALI",  "Arial"}, {"ARIALBI", "Arial"},
+        {"ARIAL",   "Arial"}, {"ARIALU",  "Arial Unicode MS"},
+        {"TIMESNR", "Times New Roman"}, {"TIMESN",  "Times New Roman"},
+        {"COURR",   "Courier New"},     {"COUR",    "Courier New"},
+        {"HELV",    "Helvetica"},        {"VERD",    "Verdana"},
+        {"CALIBRI", "Calibri"},          {"GOTHIC",  "Century Gothic"},
+        {"CAMBRIA", "Cambria"},          {"TAHOMA",  "Tahoma"},
+    };
+    for (auto& [key, val] : kMap)
+        if (upper == key) return val;
+    // Fallback: strip trailing R/B/I suffix then title-case
+    if (!upper.empty() && (upper.back() == 'R' || upper.back() == 'B' || upper.back() == 'I'))
+        upper.pop_back();
+    if (!upper.empty())
+    {
+        std::string result;
+        result += static_cast<char>(std::toupper(upper[0]));
+        for (size_t i = 1; i < upper.size(); ++i)
+            result += static_cast<char>(std::tolower(upper[i]));
+        return result;
+    }
+    return "";
+}
+
 ParseResult ZPLParser::Parse(const std::string& zpl, PrinterDPI dpiHint)
 {
     ParseResult res;
@@ -135,13 +174,21 @@ ParseResult ZPLParser::Parse(const std::string& zpl, PrinterDPI dpiHint)
         BarcodeElement* lastBarcode = nullptr;
         foX = foY = 0;
 
+        // ^BY sets module/bar height and persists for the whole label.
+        int pByHeight = 100;
+
         // Pending font / field-block settings (consumed when ^FD creates a text element)
         std::string pFontPath = ""; int pFontH = 30; int pFontW = 0; int pRot = 0;
         bool pFB = false; int pFBW = 0; int pFBL = 1; int pFBS = 0; int pFBJ = 0;
+        bool pFoIsBaseline = false;
+        int  pBcHeight = -1;   // -1 = use pByHeight; set by explicit ^BC h param
+        bool pBcShowText = true;
 
         auto resetPending = [&]() {
             pFontPath = ""; pFontH = 30; pFontW = 0; pRot = 0;
             pFB = false; pFBW = 0; pFBL = 1; pFBS = 0; pFBJ = 0;
+            pFoIsBaseline = false;
+            pBcHeight = -1; pBcShowText = true;
         };
 
         for (const auto& tok : tokens)
@@ -163,6 +210,7 @@ ParseResult ZPLParser::Parse(const std::string& zpl, PrinterDPI dpiHint)
                 }
                 lastBarcode = nullptr;
                 resetPending();
+                pFoIsBaseline = (cmd == "FT");
             }
             else if (cmd == "A@" || cmd == "A0")
             {
@@ -173,7 +221,7 @@ ParseResult ZPLParser::Parse(const std::string& zpl, PrinterDPI dpiHint)
                     switch (ori) { case 'R': pRot=90; break; case 'I': pRot=180; break;
                                    case 'B': pRot=270; break; default: pRot=0; break; }
                     std::string rest = (args.size() > 1 && args[1] == ',') ? args.substr(2) : "";
-                    // split first 3 comma-separated fields: h, w, [rest=fontpath]
+                    // split first 3 comma-separated fields: h, w, [fontpath for A@]
                     for (int i = 0; i < 3 && !rest.empty(); ++i)
                     {
                         auto c = rest.find(',');
@@ -182,13 +230,16 @@ ParseResult ZPLParser::Parse(const std::string& zpl, PrinterDPI dpiHint)
                         try {
                             if (i == 0) pFontH = std::stoi(seg);
                             if (i == 1) pFontW = std::stoi(seg);
+                            if (i == 2 && cmd == "A@") pFontPath = trim(seg); // capture font path
                         } catch (...) {}
                     }
+                    // If font path contained commas (unusual), rest holds the remainder
                     if (cmd == "A@" && !rest.empty())
                     {
                         auto fs = rest.find("^FS"); if (fs != std::string::npos) rest = rest.substr(0, fs);
                         pFontPath = trim(rest);
-                    } else { pFontPath = ""; }
+                    }
+                    else if (cmd == "A0") { pFontPath = ""; }
                 }
             }
             else if (cmd == "FB")
@@ -207,11 +258,43 @@ ParseResult ZPLParser::Parse(const std::string& zpl, PrinterDPI dpiHint)
                 }
                 pFB = true;
             }
+            else if (cmd == "BY")
+            {
+                // ^BYw,r,h  — h (3rd param) is the default bar height in dots
+                std::istringstream ss(args); std::string seg;
+                std::vector<std::string> parts;
+                while (std::getline(ss, seg, ',')) parts.push_back(seg);
+                try { if (parts.size() >= 3 && !parts[2].empty()) pByHeight = std::stoi(parts[2]); }
+                catch (...) {}
+            }
             else if (cmd == "BC" || cmd == "B3" || cmd == "BE" ||
                      cmd == "BU" || cmd == "BI" || cmd == "BQ")
             {
+                // Parse orientation and, for most types, explicit bar height + showText.
+                // ^BCo,h,f,g,e  |  ^B3o,e,h,f,g  |  ^BEo,h,f,g  |  etc.
+                // We use a unified approach: split args, orientation is [0], then h is
+                // at index 1 for BC/BE/BU/BI and index 2 for B3.
+                {
+                    std::istringstream ss(args); std::string seg;
+                    std::vector<std::string> parts;
+                    while (std::getline(ss, seg, ',')) parts.push_back(seg);
+                    int hIdx = (cmd == "B3") ? 2 : 1;   // height param index
+                    int fIdx = (cmd == "B3") ? 3 : 2;   // show-text param index
+                    try { if ((int)parts.size() > hIdx && !parts[hIdx].empty())
+                              pBcHeight = std::stoi(parts[hIdx]); } catch (...) {}
+                    if ((int)parts.size() > fIdx && !parts[fIdx].empty())
+                        pBcShowText = (parts[fIdx][0] != 'N' && parts[fIdx][0] != 'n');
+                }
+                int barH = (pBcHeight > 0) ? pBcHeight : pByHeight;
                 auto el = std::make_shared<BarcodeElement>();
-                el->x = foX; el->y = foY;
+                el->x        = foX;
+                // ^FT y = bottom of bars; ^FO y = top of element.
+                el->y        = pFoIsBaseline ? foY - barH : foY;
+                el->barHeight = barH;
+                el->showText  = pBcShowText;
+                // h = bars + approx. human-readable text height (25 dots)
+                el->h        = barH + (pBcShowText ? 25 : 0);
+                el->w        = 300;  // zint auto-sizes horizontally
                 if      (cmd == "BC") el->barcodeType = BarcodeType::Code128;
                 else if (cmd == "B3") el->barcodeType = BarcodeType::Code39;
                 else if (cmd == "BE") el->barcodeType = BarcodeType::EAN13;
@@ -229,6 +312,29 @@ ParseResult ZPLParser::Parse(const std::string& zpl, PrinterDPI dpiHint)
 
                 if (lastBarcode)
                 {
+                    // Strip ZPL Code 128 invocation / start codes (documented in
+                    // Table 2 of the ZPL Programming Guide).  These are printer
+                    // control directives embedded in the field data string, not
+                    // part of the actual barcode payload:
+                    //   >:  (104) Start Code B  — most common, e.g. ">:%BARKOD%"
+                    //   >;  (105) Start Code C
+                    //   >9  (103) Start Code A
+                    //   >5  (99)  CODE C subset switch
+                    //   >6  (100) CODE B / FNC4
+                    //   >7  (101) CODE A / FNC4
+                    //   >8  (102) FNC1
+                    // We remove every occurrence because they are meaningless for
+                    // on-screen display and would appear as literal characters.
+                    static const std::vector<std::string> invCodes = {
+                        ">:", ">;", ">9", ">5", ">6", ">7", ">8", "><", ">0",
+                        ">1", ">2", ">3", ">4", ">=",
+                    };
+                    for (const auto& code : invCodes)
+                    {
+                        size_t pos = 0;
+                        while ((pos = data.find(code, pos)) != std::string::npos)
+                            data.erase(pos, code.size());
+                    }
                     lastBarcode->data = data;
                     lastBarcode = nullptr;
                 }
@@ -236,11 +342,12 @@ ParseResult ZPLParser::Parse(const std::string& zpl, PrinterDPI dpiHint)
                 {
                     auto el = std::make_shared<TextElement>();
                     el->x        = foX;
-                    el->y        = foY;
+                    el->y        = pFoIsBaseline ? foY - pFontH : foY;
                     el->text     = data;
                     el->fontSize = pFontH;
                     el->fontWidth = pFontW;
                     el->fontPath = pFontPath;
+                    el->fontName = GuessFontName(pFontPath);
                     el->rotation = pRot;
                     if (pFB)
                     {

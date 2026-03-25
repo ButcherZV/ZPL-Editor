@@ -12,6 +12,8 @@
 #include "commands/DeleteElementCommand.h"
 #include "commands/MoveElementCommand.h"
 #include "commands/ResizeElementCommand.h"
+#include "commands/CompoundCommand.h"
+#include "commands/EditPropertyCommand.h"
 #include <wx/dcbuffer.h>
 #include <wx/filedlg.h>
 #include <algorithm>
@@ -56,10 +58,16 @@ LabelCanvas::LabelCanvas(wxWindow* parent)
 
 LabelCanvas::~LabelCanvas() = default;
 
+bool LabelCanvas::IsSelected(LabelElement* el) const
+{
+    return std::find(m_selection.begin(), m_selection.end(), el) != m_selection.end();
+}
+
 void LabelCanvas::SetLabelConfig(const LabelConfig& cfg)
 {
     m_config = cfg;
     m_elements.clear();
+    m_selection.clear();
     m_selected = nullptr;
     ZoomFit();
     UpdateScrollbars();
@@ -69,7 +77,9 @@ void LabelCanvas::SetLabelConfig(const LabelConfig& cfg)
 void LabelCanvas::SetElements(std::vector<std::shared_ptr<LabelElement>> elements)
 {
     m_elements = std::move(elements);
+    m_selection.clear();
     m_selected = nullptr;
+    m_history->Clear();  // don't let old undo history bleed across files
     Refresh();
 }
 
@@ -77,8 +87,10 @@ void LabelCanvas::SetElements(std::vector<std::shared_ptr<LabelElement>> element
 
 wxPoint LabelCanvas::LabelOffset() const
 {
-    // Offset for ruler strips (RULER_SIZE) plus 20px padding on each side
-    return wxPoint(RULER_SIZE + 20, RULER_SIZE + 20);
+    // Virtual-space origin of the label area.
+    // Extra PAN_MARGIN means Scroll(PAN_MARGIN/xu) shows the label at the natural position,
+    // and the user can pan by up to PAN_MARGIN pixels in every direction using middle-mouse.
+    return wxPoint(RULER_SIZE + 20 + PAN_MARGIN, RULER_SIZE + 20 + PAN_MARGIN);
 }
 
 int LabelCanvas::LabelPixelWidth() const
@@ -91,11 +103,15 @@ int LabelCanvas::LabelPixelHeight() const
     return static_cast<int>(std::round(m_config.totalHeight() * m_zoom));
 }
 
-wxPoint LabelCanvas::PixelToDot(wxPoint px) const
+wxPoint LabelCanvas::PixelToDot(wxPoint clientPx) const
 {
+    // Mouse events use client coordinates; LabelOffset() is in virtual (unscrolled) coords.
+    // Convert client → virtual before subtracting the label origin.
+    int vx, vy;
+    CalcUnscrolledPosition(clientPx.x, clientPx.y, &vx, &vy);
     wxPoint off = LabelOffset();
-    int x = static_cast<int>((px.x - off.x) / m_zoom);
-    int y = static_cast<int>((px.y - off.y) / m_zoom);
+    int x = static_cast<int>((vx - off.x) / m_zoom);
+    int y = static_cast<int>((vy - off.y) / m_zoom);
     return wxPoint(x, y);
 }
 
@@ -109,8 +125,9 @@ wxPoint LabelCanvas::DotToPixel(wxPoint dot) const
 
 void LabelCanvas::UpdateScrollbars()
 {
-    int vw = LabelPixelWidth()  + (RULER_SIZE + 20) * 2;
-    int vh = LabelPixelHeight() + (RULER_SIZE + 20) * 2;
+    // Add PAN_MARGIN on each side so there is always scrollable room for middle-mouse pan.
+    int vw = LabelPixelWidth()  + (RULER_SIZE + 20) * 2 + PAN_MARGIN * 2;
+    int vh = LabelPixelHeight() + (RULER_SIZE + 20) * 2 + PAN_MARGIN * 2;
     SetVirtualSize(vw, vh);
 }
 
@@ -151,6 +168,9 @@ void LabelCanvas::NotifyChanged()
     wxPostEvent(GetParent(), evt);
 }
 
+void LabelCanvas::MarkHistoryClean() { m_history->MarkClean(); }
+bool LabelCanvas::IsModified()  const { return m_history->IsModified(); }
+
 void LabelCanvas::ZoomFit()
 {
     if (m_config.totalWidth() <= 0 || m_config.totalHeight() <= 0)
@@ -160,9 +180,17 @@ void LabelCanvas::ZoomFit()
     }
     wxSize client = GetClientSize();
     const int pad = (RULER_SIZE + 20) * 2;
+    int lpr = std::max(1, m_config.labelsPerRow);
+    (void)lpr; // lpr only affects ZPL export; canvas always shows one column
     double zx = static_cast<double>(client.x - pad) / m_config.totalWidth();
     double zy = static_cast<double>(client.y - pad) / m_config.totalHeight();
-    SetZoom(std::min(zx, zy));
+    SetZoom(std::min(zx, zy));  // also calls UpdateScrollbars
+
+    // Scroll so the label appears at its natural position (PAN_MARGIN into virtual space)
+    int xu, yu;
+    GetScrollPixelsPerUnit(&xu, &yu);
+    if (xu > 0 && yu > 0)
+        Scroll(PAN_MARGIN / xu, PAN_MARGIN / yu);
 }
 
 // ── Undo / Redo ───────────────────────────────────────────────────────────────
@@ -170,6 +198,7 @@ void LabelCanvas::ZoomFit()
 void LabelCanvas::Undo()
 {
     m_history->Undo();
+    m_selection.clear();
     m_selected = nullptr;
     NotifyChanged();
     Refresh();
@@ -178,6 +207,7 @@ void LabelCanvas::Undo()
 void LabelCanvas::Redo()
 {
     m_history->Redo();
+    m_selection.clear();
     m_selected = nullptr;
     NotifyChanged();
     Refresh();
@@ -199,27 +229,44 @@ wxPoint LabelCanvas::SnapDot(wxPoint dot) const
 
 void LabelCanvas::AlignSelected(int type)
 {
-    if (!m_selected) return;
+    if (m_selection.empty()) return;
     const auto& c = m_config;
 
-    int nx = m_selected->x, ny = m_selected->y;
-    switch (type)
+    // For edge alignments (0-3) compute the reference from the selection itself:
+    //   Left   → leftmost left edge   (min x)
+    //   Right  → rightmost right edge (max x+w)
+    //   Top    → topmost top edge     (min y)
+    //   Bottom → bottommost bot edge  (max y+h)
+    // For center alignments (4-5) we still center relative to the label area.
+    int refLeft = INT_MAX, refTop = INT_MAX;
+    int refRight = INT_MIN, refBottom = INT_MIN;
+    for (const LabelElement* el : m_selection)
     {
-    case 0: nx = c.marginLeft; break;                                                      // Left
-    case 1: nx = c.marginLeft + c.widthDots  - m_selected->w; break;                      // Right
-    case 2: ny = c.marginTop;  break;                                                      // Top
-    case 3: ny = c.marginTop  + c.heightDots - m_selected->h; break;                      // Bottom
-    case 4: nx = c.marginLeft + (c.widthDots  - m_selected->w) / 2; break;                // Center H
-    case 5: ny = c.marginTop  + (c.heightDots - m_selected->h) / 2; break;                // Center V
+        refLeft   = std::min(refLeft,   el->x);
+        refTop    = std::min(refTop,    el->y);
+        refRight  = std::max(refRight,  el->x + el->w);
+        refBottom = std::max(refBottom, el->y + el->h);
     }
-    if (nx != m_selected->x || ny != m_selected->y)
+
+    auto compound = std::make_unique<CompoundCommand>();
+    for (LabelElement* el : m_selection)
     {
-        auto cmd = std::make_unique<MoveElementCommand>(
-            m_selected,
-            wxPoint(m_selected->x, m_selected->y),
-            wxPoint(nx, ny));
-        ExecuteCommand(std::move(cmd));
+        int nx = el->x, ny = el->y;
+        switch (type)
+        {
+        case 0: nx = refLeft;              break;  // align left edges
+        case 1: nx = refRight  - el->w;    break;  // align right edges
+        case 2: ny = refTop;               break;  // align top edges
+        case 3: ny = refBottom - el->h;    break;  // align bottom edges
+        case 4: nx = c.marginLeft + (c.widthDots  - el->w) / 2; break;  // center H on label
+        case 5: ny = c.marginTop  + (c.heightDots - el->h) / 2; break;  // center V on label
+        }
+        if (nx != el->x || ny != el->y)
+            compound->Add(std::make_unique<MoveElementCommand>(
+                el, wxPoint(el->x, el->y), wxPoint(nx, ny)));
     }
+    if (!compound->Empty())
+        ExecuteCommand(std::move(compound));
 }
 
 void LabelCanvas::CopySelected()
@@ -297,6 +344,19 @@ void LabelCanvas::OnPaint(wxPaintEvent&)
         dc.GetDeviceOrigin(&ox, &oy);
         dc.SetDeviceOrigin(0, 0);
         DrawRulers(dc);
+
+        // Draw rubber-band marquee on top of everything (client coords)
+        if (m_marquee)
+        {
+            wxRect r(wxPoint(std::min(m_marqueeStart.x, m_marqueeEnd.x),
+                             std::min(m_marqueeStart.y, m_marqueeEnd.y)),
+                     wxPoint(std::max(m_marqueeStart.x, m_marqueeEnd.x),
+                             std::max(m_marqueeStart.y, m_marqueeEnd.y)));
+            dc.SetPen(wxPen(wxColour(0, 120, 215), 1, wxPENSTYLE_DOT));
+            dc.SetBrush(*wxTRANSPARENT_BRUSH);
+            dc.DrawRectangle(r);
+        }
+
         dc.SetDeviceOrigin(ox, oy);
     }
 }
@@ -336,32 +396,35 @@ void LabelCanvas::DrawLabel(wxDC& dc)
         dc.SetPen(wxPen(wxColour(180, 80, 80), 1, wxPENSTYLE_SHORT_DASH));
         dc.DrawRectangle(mx, my, mw, mh);
     }
+
+    // Label-count badge (top-right corner) so user knows how many columns exist.
+    int lpr = m_config.labelsPerRow;
+    if (lpr > 1)
+    {
+        wxString badge = wxString::Format("x%d", lpr);
+        dc.SetFont(wxFont(wxFontInfo(wxSize(0,11)).Family(wxFONTFAMILY_SWISS).Bold()));
+        dc.SetTextForeground(wxColour(200,80,80));
+        wxSize ext = dc.GetTextExtent(badge);
+        dc.DrawText(badge, off.x + pw - ext.x - 4, off.y + 3);
+    }
 }
 
 void LabelCanvas::DrawGrid(wxDC& dc)
 {
-    // Draw a subtle grid every 10 mm (or proportional in dots)
-    if (m_config.dpi == PrinterDPI::DPI_203 || true)
-    {
-        int gridDots = MMToDots(10.0, m_config.dpi);   // 10 mm grid
-        if (gridDots <= 0) return;
+    int gridDots = MMToDots(10.0, m_config.dpi);
+    if (gridDots <= 0) return;
+    double gridPx = gridDots * m_zoom;
+    if (gridPx < 4.0) return;
 
-        double gridPx = gridDots * m_zoom;
-        if (gridPx < 4.0) return;  // too dense to show
+    wxPoint off = LabelOffset();
+    int pw = LabelPixelWidth();
+    int ph = LabelPixelHeight();
 
-        wxPoint off = LabelOffset();
-        int pw = LabelPixelWidth();
-        int ph = LabelPixelHeight();
-
-        dc.SetPen(wxPen(wxColour(210, 210, 255), 1));
-
-        for (double x = off.x; x <= off.x + pw; x += gridPx)
-            dc.DrawLine(static_cast<int>(x), off.y,
-                        static_cast<int>(x), off.y + ph);
-        for (double y = off.y; y <= off.y + ph; y += gridPx)
-            dc.DrawLine(off.x, static_cast<int>(y),
-                        off.x + pw, static_cast<int>(y));
-    }
+    dc.SetPen(wxPen(wxColour(210, 210, 255), 1));
+    for (double x = off.x; x <= off.x + pw; x += gridPx)
+        dc.DrawLine(static_cast<int>(x), off.y, static_cast<int>(x), off.y + ph);
+    for (double y = off.y; y <= off.y + ph; y += gridPx)
+        dc.DrawLine(off.x, static_cast<int>(y), off.x + pw, static_cast<int>(y));
 }
 
 void LabelCanvas::DrawElements(wxDC& dc)
@@ -371,6 +434,8 @@ void LabelCanvas::DrawElements(wxDC& dc)
         el->Draw(dc, LabelOffset(), m_zoom);
         if (el.get() == m_selected)
             DrawSelectionHandles(dc, el.get());
+        else if (IsSelected(el.get()))
+            DrawSelectionOutline(dc, el.get());
     }
 }
 
@@ -401,6 +466,14 @@ void LabelCanvas::DrawSelectionHandles(wxDC& dc, LabelElement* el)
     for (auto& p : pts)
         dc.DrawRectangle(p.x - HANDLE_SIZE / 2, p.y - HANDLE_SIZE / 2,
                          HANDLE_SIZE, HANDLE_SIZE);
+}
+
+void LabelCanvas::DrawSelectionOutline(wxDC& dc, LabelElement* el)
+{
+    wxRect bounds = el->GetBoundsPixels(LabelOffset(), m_zoom);
+    dc.SetBrush(*wxTRANSPARENT_BRUSH);
+    dc.SetPen(wxPen(wxColour(0, 120, 215), 1, wxPENSTYLE_SHORT_DASH));
+    dc.DrawRectangle(bounds);
 }
 // ── Rulers ────────────────────────────────────────────────────────────────────────────
 void LabelCanvas::DrawRulers(wxDC& dc)
@@ -492,22 +565,28 @@ void LabelCanvas::DrawRulers(wxDC& dc)
 }
 // ── Hit testing ───────────────────────────────────────────────────────────────
 
-LabelElement* LabelCanvas::HitTest(wxPoint px) const
+LabelElement* LabelCanvas::HitTest(wxPoint clientPx) const
 {
+    int vx, vy;
+    CalcUnscrolledPosition(clientPx.x, clientPx.y, &vx, &vy);
+    wxPoint vpx(vx, vy);
     wxPoint off = LabelOffset();
     // Iterate in reverse (top element first)
     for (int i = static_cast<int>(m_elements.size()) - 1; i >= 0; --i)
     {
         wxRect b = m_elements[i]->GetBoundsPixels(off, m_zoom);
-        if (b.Contains(px))
+        if (b.Contains(vpx))
             return m_elements[i].get();
     }
     return nullptr;
 }
 
-int LabelCanvas::HitTestHandle(LabelElement* el, wxPoint px) const
+int LabelCanvas::HitTestHandle(LabelElement* el, wxPoint clientPx) const
 {
     if (!el) return -2;
+    int vx, vy;
+    CalcUnscrolledPosition(clientPx.x, clientPx.y, &vx, &vy);
+    wxPoint vpx(vx, vy);
     wxPoint off    = LabelOffset();
     wxRect  bounds = el->GetBoundsPixels(off, m_zoom);
 
@@ -524,9 +603,9 @@ int LabelCanvas::HitTestHandle(LabelElement* el, wxPoint px) const
 
     for (int i = 0; i < 8; ++i)
     {
-        wxRect hr(pts[i].x - HANDLE_SIZE, pts[i].y - HANDLE_SIZE,
-                  HANDLE_SIZE * 2, HANDLE_SIZE * 2);
-        if (hr.Contains(px))
+        wxRect hr(pts[i].x - HANDLE_HIT_RADIUS, pts[i].y - HANDLE_HIT_RADIUS,
+                  HANDLE_HIT_RADIUS * 2,         HANDLE_HIT_RADIUS * 2);
+        if (hr.Contains(vpx))
             return i;
     }
     return -1;  // no handle hit, but might be body
@@ -542,9 +621,13 @@ void LabelCanvas::OnMouseDown(wxMouseEvent& evt)
     // ── Tool placement mode ───────────────────────────────────────────────────
     if (m_activeTool != ActiveTool::Select)
     {
-        wxPoint off = LabelOffset();
+        // Convert client coords to virtual (unscrolled) coords for the label-bounds check.
+        int vx, vy;
+        CalcUnscrolledPosition(px.x, px.y, &vx, &vy);
+        wxPoint vpx(vx, vy);
+        wxPoint off = LabelOffset();  // already in virtual coords
         wxRect  labelRect(off.x, off.y, LabelPixelWidth(), LabelPixelHeight());
-        if (labelRect.Contains(px))
+        if (labelRect.Contains(vpx))
         {
             wxPoint dot = SnapDot(PixelToDot(px));
             std::shared_ptr<LabelElement> newEl;
@@ -609,6 +692,7 @@ void LabelCanvas::OnMouseDown(wxMouseEvent& evt)
     }
 
     // ── Select tool: handle drag / resize ────────────────────────────────────
+    // Resize handles only test against the primary selected element
     if (m_selected)
     {
         int handle = HitTestHandle(m_selected, px);
@@ -619,25 +703,66 @@ void LabelCanvas::OnMouseDown(wxMouseEvent& evt)
             m_dragStartPx  = px;
             m_dragOrigDot  = wxPoint(m_selected->x, m_selected->y);
             m_dragOrigSize = wxSize(m_selected->w, m_selected->h);
-            CaptureMouse();
+            if (!HasCapture()) CaptureMouse();
             return;
         }
     }
 
     LabelElement* hit = HitTest(px);
+
+    if (evt.ControlDown())
+    {
+        // Ctrl+click: toggle element in / out of selection
+        if (hit)
+        {
+            auto it = std::find(m_selection.begin(), m_selection.end(), hit);
+            if (it != m_selection.end())
+            {
+                m_selection.erase(it);
+                m_selected = m_selection.empty() ? nullptr : m_selection.back();
+            }
+            else
+            {
+                m_selection.push_back(hit);
+                m_selected = hit;
+            }
+            NotifyChanged();
+        }
+        Refresh();
+        return;
+    }
+
     if (hit)
     {
+        // Clicking on an element outside the current selection clears selection first
+        if (!IsSelected(hit))
+        {
+            m_selection.clear();
+            m_selection.push_back(hit);
+        }
         m_selected     = hit;
         m_dragHandle   = -1;  // body drag
         m_dragging     = true;
         m_dragStartPx  = px;
         m_dragOrigDot  = wxPoint(hit->x, hit->y);
         m_dragOrigSize = wxSize(hit->w, hit->h);
-        CaptureMouse();
+        // Record original positions for ALL selected elements (multi-drag)
+        m_dragOrigDots.clear();
+        for (LabelElement* el : m_selection)
+            m_dragOrigDots.push_back(wxPoint(el->x, el->y));
+        if (!HasCapture()) CaptureMouse();
+        NotifyChanged();
     }
     else
     {
+        // Click on empty space — start rubber-band marquee selection
+        m_selection.clear();
         m_selected = nullptr;
+        m_marquee      = true;
+        m_marqueeStart = px;
+        m_marqueeEnd   = px;
+        if (!HasCapture()) CaptureMouse();
+        NotifyChanged();
     }
     Refresh();
     evt.Skip();
@@ -654,19 +779,24 @@ void LabelCanvas::OnMouseMove(wxMouseEvent& evt)
         GetScrollPixelsPerUnit(&xu, &yu);
         if (xu > 0 && yu > 0)
         {
+            // ScrollWindow() override handles Freeze/Refresh/Thaw automatically.
             Scroll(m_panStartScroll.x - delta.x / xu,
                    m_panStartScroll.y - delta.y / yu);
-            // Rulers are drawn as a device-space overlay so they won't be
-            // repainted by the partial-region update that Scroll() triggers.
-            // Force the ruler strips to redraw explicitly.
-            wxSize cl = GetClientSize();
-            RefreshRect(wxRect(0, 0, cl.x, RULER_SIZE), false); // top ruler
-            RefreshRect(wxRect(0, 0, RULER_SIZE, cl.y), false); // left ruler
         }
         return;
     }
 
-    if (!m_dragging || !m_selected) { evt.Skip(); return; }
+    if (!m_dragging || !m_selected)
+    {
+        // Update marquee rect if we are in rubber-band mode
+        if (m_marquee)
+        {
+            m_marqueeEnd = evt.GetPosition();
+            Refresh();
+        }
+        evt.Skip();
+        return;
+    }
 
     wxPoint px    = evt.GetPosition();
     wxPoint delta = px - m_dragStartPx;
@@ -675,10 +805,15 @@ void LabelCanvas::OnMouseMove(wxMouseEvent& evt)
 
     if (m_dragHandle == -1)
     {
-        // Body drag — move element (with snap)
+        // Body drag — move ALL selected elements together (snap based on primary)
         auto snapped = SnapDot(wxPoint(m_dragOrigDot.x + ddx, m_dragOrigDot.y + ddy));
-        m_selected->x = snapped.x;
-        m_selected->y = snapped.y;
+        int dx = snapped.x - m_dragOrigDot.x;
+        int dy = snapped.y - m_dragOrigDot.y;
+        for (size_t i = 0; i < m_selection.size() && i < m_dragOrigDots.size(); ++i)
+        {
+            m_selection[i]->x = m_dragOrigDots[i].x + dx;
+            m_selection[i]->y = m_dragOrigDots[i].y + dy;
+        }
     }
     else
     {
@@ -701,7 +836,14 @@ void LabelCanvas::OnMouseMove(wxMouseEvent& evt)
         case 7:             nw += ddx; nh += ddy; break;            // BR
         }
 
-        if (nw > 4) { m_selected->x = nx; m_selected->w = nw; }
+        if (nw > 4)
+        {
+            m_selected->x = nx;
+            m_selected->w = nw;
+            // Keep fieldBlockWidth in sync so Draw() doesn't override w on repaint
+            if (auto* t = dynamic_cast<TextElement*>(m_selected); t && t->useFieldBlock)
+                t->fieldBlockWidth = nw;
+        }
         if (nh > 4) { m_selected->y = ny; m_selected->h = nh; }
     }
     Refresh();
@@ -709,6 +851,36 @@ void LabelCanvas::OnMouseMove(wxMouseEvent& evt)
 
 void LabelCanvas::OnMouseUp(wxMouseEvent& evt)
 {
+    // ── Finish rubber-band marquee ────────────────────────────────────────────
+    if (m_marquee)
+    {
+        if (HasCapture()) ReleaseMouse();
+        m_marquee = false;
+
+        // Build the selection rectangle in virtual (scrolled) canvas coords
+        int ax, ay, bx, by;
+        CalcUnscrolledPosition(m_marqueeStart.x, m_marqueeStart.y, &ax, &ay);
+        CalcUnscrolledPosition(m_marqueeEnd.x,   m_marqueeEnd.y,   &bx, &by);
+        wxRect selRect(wxPoint(std::min(ax, bx), std::min(ay, by)),
+                       wxPoint(std::max(ax, bx), std::max(ay, by)));
+
+        wxPoint off = LabelOffset();
+        m_selection.clear();
+        m_selected = nullptr;
+        for (auto& el : m_elements)
+        {
+            wxRect b = el->GetBoundsPixels(off, m_zoom);
+            if (selRect.Intersects(b))
+            {
+                m_selection.push_back(el.get());
+                m_selected = el.get();
+            }
+        }
+        Refresh();
+        NotifyChanged();
+        return;
+    }
+
     if (!m_dragging || !m_selected) { evt.Skip(); return; }
 
     if (HasCapture()) ReleaseMouse();
@@ -717,27 +889,56 @@ void LabelCanvas::OnMouseUp(wxMouseEvent& evt)
     // Commit to undo history
     if (m_dragHandle == -1)
     {
-        if (m_selected->x != m_dragOrigDot.x ||
-            m_selected->y != m_dragOrigDot.y)
+        // Build a compound move command covering all elements that actually moved
+        auto compound = std::make_unique<CompoundCommand>();
+        for (size_t i = 0; i < m_selection.size() && i < m_dragOrigDots.size(); ++i)
         {
-            auto cmd = std::make_unique<MoveElementCommand>(
-                m_selected,
-                m_dragOrigDot,
-                wxPoint(m_selected->x, m_selected->y));
-            m_history->Execute(std::move(cmd));
+            auto orig = m_dragOrigDots[i];
+            auto curr = wxPoint(m_selection[i]->x, m_selection[i]->y);
+            if (orig.x != curr.x || orig.y != curr.y)
+                compound->Add(std::make_unique<MoveElementCommand>(m_selection[i], orig, curr));
         }
+        if (!compound->Empty())
+            m_history->Execute(std::move(compound));
     }
     else
     {
         if (m_selected->w != m_dragOrigSize.x ||
             m_selected->h != m_dragOrigSize.y)
         {
-            auto cmd = std::make_unique<ResizeElementCommand>(
-                m_selected,
-                m_dragOrigDot, m_dragOrigSize,
-                wxPoint(m_selected->x, m_selected->y),
-                wxSize(m_selected->w, m_selected->h));
-            m_history->Execute(std::move(cmd));
+            // Special case: resizing a field-block text element changes fieldBlockWidth
+            if (auto* t = dynamic_cast<TextElement*>(m_selected);
+                t && t->useFieldBlock && t->fieldBlockWidth > 0)
+            {
+                auto compound = std::make_unique<CompoundCommand>();
+                // Position change (left-edge handles move x)
+                wxPoint newPos(t->x, t->y);
+                if (newPos != m_dragOrigDot)
+                    compound->Add(std::make_unique<MoveElementCommand>(
+                        m_selected, m_dragOrigDot, newPos));
+                // fieldBlockWidth change
+                int oldFBW = m_dragOrigSize.x; // original w == original fieldBlockWidth
+                if (t->w != oldFBW)
+                    compound->Add(std::make_unique<EditPropertyCommand<int>>(
+                        [t]{ return t->fieldBlockWidth; },
+                        [t](int v){ t->fieldBlockWidth = v; },
+                        oldFBW, t->w));
+                if (!compound->Empty())
+                    m_history->Execute(std::move(compound));
+            }
+            else
+            {
+                // Once the user manually resizes a TextElement, stop auto-sizing it to text extent
+                if (auto* t = dynamic_cast<TextElement*>(m_selected))
+                    t->autoSize = false;
+
+                auto cmd = std::make_unique<ResizeElementCommand>(
+                    m_selected,
+                    m_dragOrigDot, m_dragOrigSize,
+                    wxPoint(m_selected->x, m_selected->y),
+                    wxSize(m_selected->w, m_selected->h));
+                m_history->Execute(std::move(cmd));
+            }
         }
     }
     Refresh();
@@ -755,6 +956,24 @@ void LabelCanvas::OnMouseWheel(wxMouseEvent& evt)
     {
         evt.Skip();
     }
+}
+
+void LabelCanvas::ScrollWindow(int dx, int dy, const wxRect* rect)
+{
+    // wxScrolledWindow::Scroll() / scrollbar messages all funnel through
+    // here.  The base-class implementation calls ::ScrollWindow() (Win32)
+    // which immediately BitBlts existing screen pixels to the new position,
+    // carrying our ruler tick-marks with them — causing ghost artefacts.
+    //
+    // Solution: Freeze() suppresses all visual output (WM_SETREDRAW=FALSE),
+    // let the base class update the scroll position and backing state, then
+    // mark the entire client dirty and Thaw() to flush one clean repaint.
+    // Because rulers are painted in fixed client-coords (device-origin reset
+    // to 0,0 in OnPaint) that single repaint always shows them correctly.
+    Freeze();
+    wxScrolledWindow::ScrollWindow(dx, dy, rect);
+    Refresh(false);
+    Thaw();
 }
 
 void LabelCanvas::OnMiddleDown(wxMouseEvent& evt)
@@ -790,20 +1009,20 @@ void LabelCanvas::OnKeyDown(wxKeyEvent& evt)
     }
 
     // ── Arrow key nudge ──────────────────────────────────────────────────────
-    if (m_selected && (key == WXK_LEFT || key == WXK_RIGHT ||
-                       key == WXK_UP   || key == WXK_DOWN))
+    if (!m_selection.empty() && (key == WXK_LEFT || key == WXK_RIGHT ||
+                                  key == WXK_UP   || key == WXK_DOWN))
     {
         int step = evt.ShiftDown() ? 1 : m_snapSize;
-        int nx = m_selected->x, ny = m_selected->y;
-        if (key == WXK_LEFT)  nx -= step;
-        if (key == WXK_RIGHT) nx += step;
-        if (key == WXK_UP)    ny -= step;
-        if (key == WXK_DOWN)  ny += step;
-        auto cmd = std::make_unique<MoveElementCommand>(
-            m_selected,
-            wxPoint(m_selected->x, m_selected->y),
-            wxPoint(nx, ny));
-        ExecuteCommand(std::move(cmd));
+        int dx = 0, dy = 0;
+        if (key == WXK_LEFT)  dx = -step;
+        if (key == WXK_RIGHT) dx =  step;
+        if (key == WXK_UP)    dy = -step;
+        if (key == WXK_DOWN)  dy =  step;
+        auto compound = std::make_unique<CompoundCommand>();
+        for (LabelElement* el : m_selection)
+            compound->Add(std::make_unique<MoveElementCommand>(
+                el, wxPoint(el->x, el->y), wxPoint(el->x + dx, el->y + dy)));
+        ExecuteCommand(std::move(compound));
         return;
     }
 
@@ -829,20 +1048,27 @@ void LabelCanvas::OnKeyDown(wxKeyEvent& evt)
     // ── Delete ────────────────────────────────────────────────────────────────
     case WXK_DELETE:
     case WXK_BACK:
-        if (m_selected)
+        if (!m_selection.empty())
         {
-            for (auto& sp : m_elements)
+            auto compound = std::make_unique<CompoundCommand>();
+            for (LabelElement* selEl : m_selection)
             {
-                if (sp.get() == m_selected)
+                for (auto& sp : m_elements)
                 {
-                    auto cmd = std::make_unique<DeleteElementCommand>(m_elements, sp);
-                    m_selected = nullptr;
-                    m_history->Execute(std::move(cmd));
-                    NotifyChanged();
-                    Refresh();
-                    return;
+                    if (sp.get() == selEl)
+                    {
+                        compound->Add(std::make_unique<DeleteElementCommand>(m_elements, sp));
+                        break;
+                    }
                 }
             }
+            m_selection.clear();
+            m_selected = nullptr;
+            if (!compound->Empty())
+                m_history->Execute(std::move(compound));
+            NotifyChanged();
+            Refresh();
+            return;
         }
         break;
 
@@ -863,13 +1089,23 @@ void LabelCanvas::OnContextMenu(wxContextMenuEvent& evt)
     else
         pt = ScreenToClient(evt.GetPosition());
 
-    // Select element under cursor (or clear selection)
+    // Select element under cursor (or clear selection).
+    // Right-clicking an already-selected element keeps the current selection.
     LabelElement* hit = HitTest(pt);
-    if (hit != m_selected)
+    if (hit)
     {
-        m_selected = hit;
-        Refresh();
-        if (hit) NotifyChanged();
+        if (!IsSelected(hit))
+        {
+            m_selection.clear();
+            m_selection.push_back(hit);
+            m_selected = hit;
+            Refresh();
+            NotifyChanged();
+        }
+        else
+        {
+            m_selected = hit;  // promote to primary within existing selection
+        }
     }
 
     if (!m_selected) return;  // nothing under cursor — no menu

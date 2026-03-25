@@ -5,7 +5,8 @@
 // Access via AppConfig::Get().
 struct AppConfig
 {
-    MeasureUnit units = MeasureUnit::Metric;
+    MeasureUnit units    = MeasureUnit::Metric;
+    int         snapSize = 10;  // grid snap size in dots
 
     // Load from wxConfig
     static AppConfig Load();

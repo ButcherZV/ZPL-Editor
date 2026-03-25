@@ -15,6 +15,8 @@
 #include <wx/file.h>
 #include <wx/filename.h>
 #include <wx/choicdlg.h>
+#include <wx/numdlg.h>
+#include "ToolIcons.h"
 #ifdef __WINDOWS__
 #include <windows.h>
 #include <winspool.h>
@@ -42,7 +44,9 @@ wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
     EVT_MENU(ID_ZOOM_IN,     MainFrame::OnZoomIn)
     EVT_MENU(ID_ZOOM_OUT,    MainFrame::OnZoomOut)
     EVT_MENU(ID_ZOOM_FIT,    MainFrame::OnZoomFit)
-    EVT_MENU_RANGE(ID_LANG_ENGLISH, ID_LANG_SERBIAN, MainFrame::OnLanguage)
+    EVT_MENU_RANGE(ID_LANG_ENGLISH, ID_LANG_SERBIAN,   MainFrame::OnLanguage)
+    EVT_MENU_RANGE(ID_UNITS_METRIC, ID_UNITS_IMPERIAL, MainFrame::OnUnits)
+    EVT_MENU_RANGE(ID_GRID_2,       ID_GRID_CUSTOM,    MainFrame::OnGridSize)
     EVT_CLOSE(               MainFrame::OnClose)
 wxEND_EVENT_TABLE()
 
@@ -113,8 +117,6 @@ void MainFrame::BuildMenuBar()
     edit->AppendSeparator();
     edit->Append(ID_DUPLICATE, TR(MENU_DUPLICATE));
     edit->AppendSubMenu(align, TR(MENU_ALIGN));
-    edit->AppendSeparator();
-    edit->Append(ID_OPTIONS,   TR(MENU_OPTIONS));
     mb->Append(edit, TR(MENU_EDIT));
 
     // View
@@ -127,13 +129,46 @@ void MainFrame::BuildMenuBar()
     view->AppendSeparator();
     view->AppendCheckItem(ID_TOGGLE_ZPL, TR(MENU_SHOW_ZPL));
 
-    auto* langMenu = new wxMenu();
-    langMenu->Append(ID_LANG_ENGLISH, TR(STR_LANG_ENGLISH));
-    langMenu->Append(ID_LANG_SERBIAN, TR(STR_LANG_SERBIAN));
-    view->AppendSeparator();
-    view->AppendSubMenu(langMenu, TR(MENU_LANGUAGE));
-
     mb->Append(view, TR(MENU_VIEW));
+
+    // Options menu — Language + Measuring Units with radio items
+    auto* opts    = new wxMenu();
+
+    auto* langSub = new wxMenu();
+    langSub->AppendRadioItem(ID_LANG_ENGLISH, TR(STR_LANG_ENGLISH));
+    langSub->AppendRadioItem(ID_LANG_SERBIAN, TR(STR_LANG_SERBIAN));
+    langSub->Check(I18n::GetLanguage() == AppLang::Serbian ? ID_LANG_SERBIAN : ID_LANG_ENGLISH, true);
+    opts->AppendSubMenu(langSub, TR(MENU_LANGUAGE));
+
+    opts->AppendSeparator();
+
+    auto* unitsSub = new wxMenu();
+    unitsSub->AppendRadioItem(ID_UNITS_METRIC,   TR(MENU_UNITS_METRIC));
+    unitsSub->AppendRadioItem(ID_UNITS_IMPERIAL, TR(MENU_UNITS_IMPERIAL));
+    unitsSub->Check(AppConfig::Get().units == MeasureUnit::Metric
+                    ? ID_UNITS_METRIC : ID_UNITS_IMPERIAL, true);
+    opts->AppendSubMenu(unitsSub, TR(MENU_UNITS));
+
+    opts->AppendSeparator();
+
+    auto* gridSub = new wxMenu();
+    gridSub->AppendRadioItem(ID_GRID_2,  TR(MENU_GRID_2));
+    gridSub->AppendRadioItem(ID_GRID_5,  TR(MENU_GRID_5));
+    gridSub->AppendRadioItem(ID_GRID_10, TR(MENU_GRID_10));
+    {
+        int snap = AppConfig::Get().snapSize;
+        wxString customLabel = (snap != 2 && snap != 5 && snap != 10)
+            ? wxString::Format(TR(MENU_GRID_CUSTOM_N), snap)
+            : TR(MENU_GRID_CUSTOM);
+        gridSub->AppendRadioItem(ID_GRID_CUSTOM, customLabel);
+        int gridId = (snap == 2) ? ID_GRID_2 :
+                     (snap == 5) ? ID_GRID_5 :
+                     (snap == 10) ? ID_GRID_10 : ID_GRID_CUSTOM;
+        gridSub->Check(gridId, true);
+    }
+    opts->AppendSubMenu(gridSub, TR(MENU_GRID_SIZE));
+
+    mb->Append(opts, TR(MENU_OPTIONS_MENU));
 
     SetMenuBar(mb);
 }
@@ -143,12 +178,60 @@ void MainFrame::BuildToolBar()
     CreateStatusBar(3);
     SetStatusText(TR(STATUS_READY));
     SetStatusText(TR(STATUS_NO_LABEL), 1);
+
+    const int SZ = 24;
+    wxToolBar* tb = CreateToolBar(wxTB_HORIZONTAL | wxTB_FLAT | wxNO_BORDER, wxID_ANY);
+    tb->SetToolBitmapSize(wxSize(SZ, SZ));
+
+    tb->AddTool(ID_NEW,  TR(MENU_NEW).BeforeFirst('\t'),  CreateMainToolbarIcon(MainToolbarIcon::New),  TR(TB_NEW));
+    tb->AddTool(ID_OPEN, TR(MENU_OPEN).BeforeFirst('\t'), CreateMainToolbarIcon(MainToolbarIcon::Open), TR(TB_OPEN));
+    tb->AddTool(ID_SAVE, TR(MENU_SAVE).BeforeFirst('\t'), CreateMainToolbarIcon(MainToolbarIcon::Save), TR(TB_SAVE));
+    tb->AddTool(ID_UNDO, TR(MENU_UNDO).BeforeFirst('\t'), CreateMainToolbarIcon(MainToolbarIcon::Undo), TR(TB_UNDO));
+    tb->AddTool(ID_REDO, TR(MENU_REDO).BeforeFirst('\t'), CreateMainToolbarIcon(MainToolbarIcon::Redo), TR(TB_REDO));
+
+    tb->AddSeparator();
+
+    tb->AddTool(ID_ALIGN_LEFT,    TR(MENU_ALIGN_LEFT).BeforeFirst('\t'),    CreateMainToolbarIcon(MainToolbarIcon::AlignLeft),    TR(TB_ALIGN_LEFT));
+    tb->AddTool(ID_ALIGN_RIGHT,   TR(MENU_ALIGN_RIGHT).BeforeFirst('\t'),   CreateMainToolbarIcon(MainToolbarIcon::AlignRight),   TR(TB_ALIGN_RIGHT));
+    tb->AddTool(ID_ALIGN_TOP,     TR(MENU_ALIGN_TOP).BeforeFirst('\t'),     CreateMainToolbarIcon(MainToolbarIcon::AlignTop),     TR(TB_ALIGN_TOP));
+    tb->AddTool(ID_ALIGN_BOTTOM,  TR(MENU_ALIGN_BOTTOM).BeforeFirst('\t'),  CreateMainToolbarIcon(MainToolbarIcon::AlignBottom),  TR(TB_ALIGN_BOTTOM));
+    tb->AddTool(ID_ALIGN_CENTERH, TR(MENU_ALIGN_CENTERH).BeforeFirst('\t'), CreateMainToolbarIcon(MainToolbarIcon::AlignCenterH), TR(TB_ALIGN_CENTERH));
+    tb->AddTool(ID_ALIGN_CENTERV, TR(MENU_ALIGN_CENTERV).BeforeFirst('\t'), CreateMainToolbarIcon(MainToolbarIcon::AlignCenterV), TR(TB_ALIGN_CENTERV));
+
+    tb->AddSeparator();
+
+    tb->AddTool(ID_ZOOM_IN,  TR(MENU_ZOOM_IN).BeforeFirst('\t'),  CreateMainToolbarIcon(MainToolbarIcon::ZoomIn),  TR(TB_ZOOM_IN));
+    tb->AddTool(ID_ZOOM_OUT, TR(MENU_ZOOM_OUT).BeforeFirst('\t'), CreateMainToolbarIcon(MainToolbarIcon::ZoomOut), TR(TB_ZOOM_OUT));
+    tb->AddTool(ID_ZOOM_FIT, TR(MENU_ZOOM_FIT).BeforeFirst('\t'), CreateMainToolbarIcon(MainToolbarIcon::ZoomFit), TR(TB_ZOOM_FIT));
+
+    tb->Realize();
+}
+
+void MainFrame::RefreshToolBar()
+{
+    wxToolBar* tb = GetToolBar();
+    if (!tb) return;
+    tb->SetToolShortHelp(ID_NEW,          TR(TB_NEW));
+    tb->SetToolShortHelp(ID_OPEN,         TR(TB_OPEN));
+    tb->SetToolShortHelp(ID_SAVE,         TR(TB_SAVE));
+    tb->SetToolShortHelp(ID_UNDO,         TR(TB_UNDO));
+    tb->SetToolShortHelp(ID_REDO,         TR(TB_REDO));
+    tb->SetToolShortHelp(ID_ALIGN_LEFT,   TR(TB_ALIGN_LEFT));
+    tb->SetToolShortHelp(ID_ALIGN_RIGHT,  TR(TB_ALIGN_RIGHT));
+    tb->SetToolShortHelp(ID_ALIGN_TOP,    TR(TB_ALIGN_TOP));
+    tb->SetToolShortHelp(ID_ALIGN_BOTTOM, TR(TB_ALIGN_BOTTOM));
+    tb->SetToolShortHelp(ID_ALIGN_CENTERH,TR(TB_ALIGN_CENTERH));
+    tb->SetToolShortHelp(ID_ALIGN_CENTERV,TR(TB_ALIGN_CENTERV));
+    tb->SetToolShortHelp(ID_ZOOM_IN,      TR(TB_ZOOM_IN));
+    tb->SetToolShortHelp(ID_ZOOM_OUT,     TR(TB_ZOOM_OUT));
+    tb->SetToolShortHelp(ID_ZOOM_FIT,     TR(TB_ZOOM_FIT));
 }
 
 void MainFrame::BuildPanels()
 {
     // Centre: canvas
     m_canvas = new LabelCanvas(this);
+    m_canvas->SetSnapSize(AppConfig::Get().snapSize);
     m_auiMgr.AddPane(m_canvas,
         wxAuiPaneInfo()
             .Name("canvas").Caption(TR(PANEL_CANVAS))
@@ -185,11 +268,34 @@ void MainFrame::BuildPanels()
 void MainFrame::LoadLabel(const LabelConfig& config)
 {
     m_canvas->SetLabelConfig(config);
+    UpdateLabelStatus();
+}
 
-    wxString info = wxString::Format(TR(STATUS_LABEL_INFO),
-        config.totalWidth(), config.totalHeight(),
-        static_cast<int>(config.dpi));
-    SetStatusText(info, 1);
+void MainFrame::UpdateTitle()
+{
+    wxString name = m_currentFile.empty()
+        ? TR(TITLE_NEW_LABEL)
+        : TR(APP_TITLE) + wxString(" - ") + wxFileName(m_currentFile).GetFullName();
+    if (m_canvas && m_canvas->IsModified())
+        name += wxString(" *");
+    SetTitle(name);
+}
+
+bool MainFrame::PromptSaveIfDirty()
+{
+    if (!m_canvas || !m_canvas->IsModified()) return true;
+    wxMessageDialog dlg(this, TR(UNSAVED_MSG), TR(UNSAVED_TITLE),
+                        wxYES_NO | wxCANCEL | wxICON_QUESTION);
+    dlg.SetYesNoCancelLabels(TR(BTN_YES), TR(BTN_NO), TR(BTN_CANCEL));
+    int answer = dlg.ShowModal();
+    if (answer == wxID_YES)
+    {
+        wxCommandEvent dummy;
+        OnSave(dummy);
+        return !m_canvas->IsModified();
+    }
+    if (answer == wxID_NO)  return true;
+    return false; // wxID_CANCEL
 }
 
 // ── Menu handlers ─────────────────────────────────────────────────────────────
@@ -202,20 +308,26 @@ void MainFrame::LoadFile(const wxString& path)
         wxMessageBox(TR(ERR_OPEN_FILE) + path, TR(ERR_TITLE), wxOK | wxICON_ERROR, this);
         return;
     }
-    wxString zplText;
-    f.ReadAll(&zplText);
+    // Read as raw bytes so that UTF-8 encoded text (^CI28 / Serbian etc.) is preserved.
+    // wxFile::ReadAll(wxString*) converts through the platform locale (CP1252 on Windows)
+    // which would corrupt multi-byte UTF-8 sequences like Š (C5 A0).
+    wxFileOffset fileSize = f.Length();
+    std::string rawZpl;
+    if (fileSize > 0)
+    {
+        rawZpl.resize(static_cast<size_t>(fileSize));
+        f.Read(&rawZpl[0], static_cast<size_t>(fileSize));
+    }
+    wxString zplText = wxString::FromUTF8(rawZpl);
 
     // Ask the user which DPI this label was designed for.
     // ZPL files store all coordinates in dots and do NOT embed DPI.
     wxArrayString dpiChoices;
-    dpiChoices.Add("152 DPI  (6 dots/mm)");
-    dpiChoices.Add("203 DPI  (8 dots/mm)  \u2013 most common");
-    dpiChoices.Add("300 DPI  (12 dots/mm)");
-    dpiChoices.Add("600 DPI  (24 dots/mm)");
-    wxSingleChoiceDialog dpiDlg(this,
-        "ZPL files do not store DPI.\n"
-        "Select the resolution the label was designed for:",
-        "Printer DPI", dpiChoices);
+    dpiChoices.Add(TR(DPI_CHOICE_152));
+    dpiChoices.Add(TR(DPI_CHOICE_203));
+    dpiChoices.Add(TR(DPI_CHOICE_300));
+    dpiChoices.Add(TR(DPI_CHOICE_600));
+    wxSingleChoiceDialog dpiDlg(this, TR(DPI_DLG_MSG), TR(DPI_DLG_TITLE), dpiChoices);
     dpiDlg.SetSelection(1);  // default: 203
     if (dpiDlg.ShowModal() != wxID_OK)
         return;
@@ -225,7 +337,7 @@ void MainFrame::LoadFile(const wxString& path)
     PrinterDPI dpi = kDpiMap[dpiDlg.GetSelection()];
 
     ZPLParser parser;
-    auto result = parser.Parse(zplText.ToStdString(), dpi);
+    auto result = parser.Parse(rawZpl, dpi);
     if (!result.ok)
     {
         wxMessageBox(TR(ERR_PARSE) + result.errorMsg,
@@ -234,10 +346,11 @@ void MainFrame::LoadFile(const wxString& path)
     }
 
     m_currentFile = path;
-    SetTitle(TR(APP_TITLE) + " \u2014 " + wxFileName(path).GetFullName());
     LoadLabel(result.config);
     m_canvas->SetElements(std::move(result.elements));
+    m_canvas->MarkHistoryClean();
     m_codePanel->SetZPL(zplText);
+    UpdateTitle();
 
     m_fileHistory.AddFileToHistory(path);
     m_fileHistory.Save(*wxConfig::Get());
@@ -245,17 +358,21 @@ void MainFrame::LoadFile(const wxString& path)
 
 void MainFrame::OnNew(wxCommandEvent&)
 {
+    if (!PromptSaveIfDirty()) return;
     NewLabelDialog dlg(this);
     if (dlg.ShowModal() == wxID_OK)
     {
         m_currentFile.clear();
-        SetTitle(TR(TITLE_NEW_LABEL));
         LoadLabel(dlg.GetConfig());
+        m_canvas->SetElements({});
+        m_canvas->MarkHistoryClean();
+        UpdateTitle();
     }
 }
 
 void MainFrame::OnOpen(wxCommandEvent&)
 {
+    if (!PromptSaveIfDirty()) return;
     wxFileDialog dlg(this, TR(DLG_OPEN_TITLE), "", "",
         TR(FILE_FILTER_ZPL),
         wxFD_OPEN | wxFD_FILE_MUST_EXIST);
@@ -268,6 +385,7 @@ void MainFrame::OnOpen(wxCommandEvent&)
 
 void MainFrame::OnRecentFile(wxCommandEvent& evt)
 {
+    if (!PromptSaveIfDirty()) return;
     wxString path = m_fileHistory.GetHistoryFile(evt.GetId() - wxID_FILE1);
     if (path.empty() || !wxFileExists(path))
     {
@@ -287,6 +405,16 @@ void MainFrame::OnSave(wxCommandEvent& evt)
         OnSaveAs(evt);
         return;
     }
+    // Ensure the file has a recognised extension (.zpl or .prn).
+    // If the current extension is neither, default to .zpl.
+    wxFileName fn(m_currentFile);
+    wxString ext = fn.GetExt().Lower();
+    if (ext != "zpl" && ext != "prn")
+    {
+        fn.SetExt("zpl");
+        m_currentFile = fn.GetFullPath();
+    }
+
     ZPLSerializer ser;
     std::string zpl = ser.Serialize(m_canvas->GetConfig(),
                                     m_canvas->GetElements());
@@ -298,24 +426,45 @@ void MainFrame::OnSave(wxCommandEvent& evt)
         return;
     }
     f.Write(zpl.c_str(), zpl.size());
+    m_canvas->MarkHistoryClean();
+    UpdateTitle();
     m_codePanel->SetZPL(wxString::FromUTF8(zpl));
 }
 
 void MainFrame::OnSaveAs(wxCommandEvent&)
 {
-    wxFileDialog dlg(this, TR(DLG_SAVE_TITLE), "", "",
-        TR(FILE_FILTER_ZPL),
-        wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
+    // Filter: index 0 = ZPL, index 1 = PRN, index 2 = All files
+    int filterIndex = 0;  // default: .zpl
+    if (!m_currentFile.empty())
+    {
+        wxString ext = wxFileName(m_currentFile).GetExt().Lower();
+        if (ext == "prn") filterIndex = 1;
+    }
+
+    wxFileDialog dlg(this, TR(DLG_SAVE_TITLE),
+                     m_currentFile.empty() ? wxString() : wxFileName(m_currentFile).GetPath(),
+                     m_currentFile.empty() ? wxString() : wxFileName(m_currentFile).GetFullName(),
+                     TR(FILE_FILTER_ZPL_SAVE),
+                     wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
+    dlg.SetFilterIndex(filterIndex);
 
     if (dlg.ShowModal() != wxID_OK)
         return;
 
     m_currentFile = dlg.GetPath();
-    SetTitle(TR(APP_TITLE) + " \u2014 " +
-             wxFileName(m_currentFile).GetFullName());
+
+    // Enforce the correct extension based on which filter was chosen.
+    wxFileName fn(m_currentFile);
+    int chosen = dlg.GetFilterIndex();
+    if (chosen == 0 && fn.GetExt().Lower() != "zpl")
+        fn.SetExt("zpl");
+    else if (chosen == 1 && fn.GetExt().Lower() != "prn")
+        fn.SetExt("prn");
+    m_currentFile = fn.GetFullPath();
 
     wxCommandEvent dummy;
     OnSave(dummy);
+    // UpdateTitle() already done inside OnSave on success
 
     m_fileHistory.AddFileToHistory(m_currentFile);
     m_fileHistory.Save(*wxConfig::Get());
@@ -353,8 +502,16 @@ void MainFrame::OnAlignElement(wxCommandEvent& evt)
 
 void MainFrame::OnUpdateAlignElement(wxUpdateUIEvent& evt)
 {
-    evt.Enable(m_canvas && m_canvas->GetSelected() != nullptr &&
-               m_canvas->GetConfig().totalWidth() > 0);
+    if (!m_canvas || m_canvas->GetConfig().totalWidth() == 0)
+    {
+        evt.Enable(false);
+        return;
+    }
+    const auto& sel = m_canvas->GetSelection();
+    // Center H/V work on a single item; all edge-align tools need 2+.
+    const bool isCentre = (evt.GetId() == ID_ALIGN_CENTERH ||
+                           evt.GetId() == ID_ALIGN_CENTERV);
+    evt.Enable(isCentre ? !sel.empty() : sel.size() >= 2);
 }
 
 void MainFrame::OnOptions(wxCommandEvent&)
@@ -411,6 +568,14 @@ void MainFrame::OnZoomFit(wxCommandEvent&)
 
 void MainFrame::OnClose(wxCloseEvent& evt)
 {
+    if (evt.CanVeto() && m_canvas && m_canvas->IsModified())
+    {
+        if (!PromptSaveIfDirty())
+        {
+            evt.Veto();
+            return;
+        }
+    }
     AppConfig::Get().Save();
     evt.Skip();
 }
@@ -419,6 +584,10 @@ void MainFrame::OnClose(wxCloseEvent& evt)
 
 void MainFrame::OnCanvasChanged(wxCommandEvent&)
 {
+    // Update title bar (* indicator) whenever canvas notifies us
+    if (m_canvas->GetConfig().totalWidth() > 0)
+        UpdateTitle();
+
     // Sync toolbox button state in case canvas reset the tool
     m_toolbox->SetActiveTool(m_canvas->GetActiveTool());
 
@@ -571,6 +740,9 @@ void MainFrame::OnLanguage(wxCommandEvent& evt)
     // Refresh toolbox tooltips
     m_toolbox->RefreshLanguage();
 
+    // Refresh main toolbar tooltips
+    RefreshToolBar();
+
     // Refresh AUI pane captions
     m_auiMgr.GetPane("canvas")    .Caption(TR(PANEL_CANVAS));
     m_auiMgr.GetPane("toolbox")   .Caption(TR(PANEL_TOOLBOX));
@@ -580,16 +752,9 @@ void MainFrame::OnLanguage(wxCommandEvent& evt)
 
     // Status bar — retranslate field 1
     if (m_canvas->GetConfig().totalWidth() > 0)
-    {
-        const LabelConfig& cfg = m_canvas->GetConfig();
-        SetStatusText(wxString::Format(TR(STATUS_LABEL_INFO),
-            cfg.totalWidth(), cfg.totalHeight(),
-            static_cast<int>(cfg.dpi)), 1);
-    }
+        UpdateLabelStatus();
     else
-    {
         SetStatusText(TR(STATUS_NO_LABEL), 1);
-    }
     // Retranslate field 0 (zoom / snap)
     {
         wxString snapStr = m_canvas->GetSnapToGrid()
@@ -601,4 +766,73 @@ void MainFrame::OnLanguage(wxCommandEvent& evt)
 
     // Refresh properties panel labels
     m_properties->ShowElement(m_canvas->GetSelected());
+}
+
+void MainFrame::OnUnits(wxCommandEvent& evt)
+{
+    AppConfig::Get().units = (evt.GetId() == ID_UNITS_METRIC)
+                             ? MeasureUnit::Metric
+                             : MeasureUnit::Imperial;
+    AppConfig::Get().Save();
+    if (m_properties)
+        m_properties->RefreshUnits();
+    UpdateLabelStatus();
+}
+
+void MainFrame::UpdateLabelStatus()
+{
+    const LabelConfig& cfg = m_canvas->GetConfig();
+    if (cfg.totalWidth() <= 0)
+    {
+        SetStatusText(TR(STATUS_NO_LABEL), 1);
+        return;
+    }
+
+    bool metric = (AppConfig::Get().units == MeasureUnit::Metric);
+    wxString unitStr;
+    if (metric)
+    {
+        double wMM = DotsToMM(cfg.totalWidth(),  cfg.dpi);
+        double hMM = DotsToMM(cfg.totalHeight(), cfg.dpi);
+        unitStr = wxString::Format(" (%.1f x %.1f mm)", wMM, hMM);
+    }
+    else
+    {
+        double wIn = DotsToInches(cfg.totalWidth(),  cfg.dpi);
+        double hIn = DotsToInches(cfg.totalHeight(), cfg.dpi);
+        unitStr = wxString::Format(" (%.2f x %.2f in)", wIn, hIn);
+    }
+
+    SetStatusText(
+        wxString::Format(TR(STATUS_LABEL_INFO),
+            cfg.totalWidth(), cfg.totalHeight(),
+            static_cast<int>(cfg.dpi)) + unitStr,
+        1);
+}
+
+void MainFrame::OnGridSize(wxCommandEvent& evt)
+{
+    int newSize = AppConfig::Get().snapSize;
+    if (evt.GetId() == ID_GRID_2)       newSize = 2;
+    else if (evt.GetId() == ID_GRID_5)  newSize = 5;
+    else if (evt.GetId() == ID_GRID_10) newSize = 10;
+    else // ID_GRID_CUSTOM
+    {
+        long val = wxGetNumberFromUser(
+            TR(MENU_GRID_DLG_MSG),
+            wxEmptyString,
+            TR(MENU_GRID_DLG_TITLE),
+            AppConfig::Get().snapSize,
+            1, 500, this);
+        if (val < 0) return; // user cancelled
+        newSize = static_cast<int>(val);
+    }
+    AppConfig::Get().snapSize = newSize;
+    AppConfig::Get().Save();
+    m_canvas->SetSnapSize(newSize);
+    // Rebuild menu to update the Custom label if needed
+    wxMenuBar* old = GetMenuBar();
+    SetMenuBar(nullptr);
+    delete old;
+    BuildMenuBar();
 }
