@@ -63,7 +63,7 @@ A WYSIWYG label designer for Zebra ZPL printers, built with C++ and wxWidgets. D
 
 ## Screenshots
 
-> *(Add screenshots here)*
+![ZPL Label Designer](screenshot1.jpg)
 
 ---
 
