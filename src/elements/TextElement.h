@@ -7,8 +7,8 @@ class TextElement : public LabelElement
 public:
     std::string text     = "Text";
     int         fontSize = 30;    // in dots (ZPL ^A font height)
-    int         fontWidth = 0;   // 0 = same as fontSize
-    bool        fontSizeLinked = false; // link height and width together
+    int         fontWidth = 30;  // in dots (ZPL ^A font width); kept in sync with fontSize when linked
+    bool        fontSizeLinked = true;  // link height and width together
     std::string fontPath = "";   // printer font path for ZPL output (e.g. "E:ARIALR.FNT")
     std::string fontName = "";   // system font face name for canvas rendering (empty = default)
     bool        bold     = false;

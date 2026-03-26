@@ -12,6 +12,7 @@ public:
     void SetActiveTool(ActiveTool tool);  // sync button state from outside
     void SetToolChangedCallback(std::function<void(ActiveTool)> cb);
     void RefreshLanguage();               // update tooltips after language change
+    void SetToolsEnabled(bool enabled);   // enable/disable all tool buttons
 
 private:
     void OnToggle(wxCommandEvent&);

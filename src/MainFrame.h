@@ -41,6 +41,8 @@ private:
         ID_ALIGN_BOTTOM,
         ID_ALIGN_CENTERH,
         ID_ALIGN_CENTERV,
+        ID_ALIGN_EL_CENTERH,    // align horizontal centers of selected elements
+        ID_ALIGN_EL_CENTERV,    // align vertical centers of selected elements
 
         ID_ZOOM_IN  = wxID_ZOOM_IN,
         ID_ZOOM_OUT = wxID_ZOOM_OUT,
@@ -89,9 +91,11 @@ private:
     void OnSnapGrid(wxCommandEvent&);
     void OnUpdateSnapGrid(wxUpdateUIEvent&);
     void OnToggleZPL(wxCommandEvent&);
+    void OnUpdateToggleZPL(wxUpdateUIEvent&);
     void OnZoomIn(wxCommandEvent&);
     void OnZoomOut(wxCommandEvent&);
     void OnZoomFit(wxCommandEvent&);
+    void OnUpdateZoom(wxUpdateUIEvent&);
     void OnPrint(wxCommandEvent&);
     void OnClose(wxCloseEvent&);
     void OnCanvasChanged(wxCommandEvent&);
@@ -102,6 +106,7 @@ private:
 
     // Updates status bar field 1 with dots + unit-specific dimensions.
     void UpdateLabelStatus();
+    void UpdateZoomStatus();
     // Updates the window title, appending '*' if there are unsaved changes.
     void UpdateTitle();
     // Prompts to save if dirty. Returns true if it's safe to proceed.

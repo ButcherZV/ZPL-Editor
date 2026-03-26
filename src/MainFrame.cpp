@@ -33,14 +33,18 @@ wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
     EVT_MENU(ID_UNDO,        MainFrame::OnUndo)
     EVT_MENU(ID_REDO,        MainFrame::OnRedo)
     EVT_MENU(ID_DUPLICATE,   MainFrame::OnDuplicate)
-    EVT_MENU_RANGE(ID_ALIGN_LEFT, ID_ALIGN_CENTERV, MainFrame::OnAlignElement)
+    EVT_MENU_RANGE(ID_ALIGN_LEFT, ID_ALIGN_EL_CENTERV, MainFrame::OnAlignElement)
     EVT_MENU(ID_OPTIONS,     MainFrame::OnOptions)
     EVT_MENU(ID_SNAP_GRID,   MainFrame::OnSnapGrid)
     EVT_UPDATE_UI(ID_UNDO,   MainFrame::OnUpdateUndo)
     EVT_UPDATE_UI(ID_REDO,   MainFrame::OnUpdateRedo)
-    EVT_UPDATE_UI_RANGE(ID_ALIGN_LEFT, ID_ALIGN_CENTERV, MainFrame::OnUpdateAlignElement)
+    EVT_UPDATE_UI_RANGE(ID_ALIGN_LEFT, ID_ALIGN_EL_CENTERV, MainFrame::OnUpdateAlignElement)
     EVT_UPDATE_UI(ID_SNAP_GRID, MainFrame::OnUpdateSnapGrid)
-    EVT_MENU(ID_TOGGLE_ZPL,  MainFrame::OnToggleZPL)
+    EVT_UPDATE_UI(ID_ZOOM_IN,  MainFrame::OnUpdateZoom)
+    EVT_UPDATE_UI(ID_ZOOM_OUT, MainFrame::OnUpdateZoom)
+    EVT_UPDATE_UI(ID_ZOOM_FIT, MainFrame::OnUpdateZoom)
+    EVT_MENU(ID_TOGGLE_ZPL,          MainFrame::OnToggleZPL)
+    EVT_UPDATE_UI(ID_TOGGLE_ZPL,      MainFrame::OnUpdateToggleZPL)
     EVT_MENU(ID_ZOOM_IN,     MainFrame::OnZoomIn)
     EVT_MENU(ID_ZOOM_OUT,    MainFrame::OnZoomOut)
     EVT_MENU(ID_ZOOM_FIT,    MainFrame::OnZoomFit)
@@ -55,6 +59,10 @@ MainFrame::MainFrame(wxWindow* parent)
               wxDefaultPosition, wxSize(1280, 800))
 {
     m_auiMgr.SetManagedWindow(this);
+
+#ifdef __WXMSW__
+    SetIcon(wxIcon("APP_ICON", wxBITMAP_TYPE_ICO_RESOURCE));
+#endif
 
     m_fileHistory.Load(*wxConfig::Get());
 
@@ -108,6 +116,8 @@ void MainFrame::BuildMenuBar()
     align->Append(ID_ALIGN_RIGHT,   TR(MENU_ALIGN_RIGHT));
     align->Append(ID_ALIGN_TOP,     TR(MENU_ALIGN_TOP));
     align->Append(ID_ALIGN_BOTTOM,  TR(MENU_ALIGN_BOTTOM));
+    align->Append(ID_ALIGN_EL_CENTERH, TR(MENU_ALIGN_EL_CENTERH));
+    align->Append(ID_ALIGN_EL_CENTERV, TR(MENU_ALIGN_EL_CENTERV));
     align->AppendSeparator();
     align->Append(ID_ALIGN_CENTERH, TR(MENU_ALIGN_CENTERH));
     align->Append(ID_ALIGN_CENTERV, TR(MENU_ALIGN_CENTERV));
@@ -179,30 +189,30 @@ void MainFrame::BuildToolBar()
     SetStatusText(TR(STATUS_READY));
     SetStatusText(TR(STATUS_NO_LABEL), 1);
 
-    const int SZ = 24;
     wxToolBar* tb = CreateToolBar(wxTB_HORIZONTAL | wxTB_FLAT | wxNO_BORDER, wxID_ANY);
-    tb->SetToolBitmapSize(wxSize(SZ, SZ));
 
-    tb->AddTool(ID_NEW,  TR(MENU_NEW).BeforeFirst('\t'),  CreateMainToolbarIcon(MainToolbarIcon::New),  TR(TB_NEW));
-    tb->AddTool(ID_OPEN, TR(MENU_OPEN).BeforeFirst('\t'), CreateMainToolbarIcon(MainToolbarIcon::Open), TR(TB_OPEN));
-    tb->AddTool(ID_SAVE, TR(MENU_SAVE).BeforeFirst('\t'), CreateMainToolbarIcon(MainToolbarIcon::Save), TR(TB_SAVE));
-    tb->AddTool(ID_UNDO, TR(MENU_UNDO).BeforeFirst('\t'), CreateMainToolbarIcon(MainToolbarIcon::Undo), TR(TB_UNDO));
-    tb->AddTool(ID_REDO, TR(MENU_REDO).BeforeFirst('\t'), CreateMainToolbarIcon(MainToolbarIcon::Redo), TR(TB_REDO));
-
-    tb->AddSeparator();
-
-    tb->AddTool(ID_ALIGN_LEFT,    TR(MENU_ALIGN_LEFT).BeforeFirst('\t'),    CreateMainToolbarIcon(MainToolbarIcon::AlignLeft),    TR(TB_ALIGN_LEFT));
-    tb->AddTool(ID_ALIGN_RIGHT,   TR(MENU_ALIGN_RIGHT).BeforeFirst('\t'),   CreateMainToolbarIcon(MainToolbarIcon::AlignRight),   TR(TB_ALIGN_RIGHT));
-    tb->AddTool(ID_ALIGN_TOP,     TR(MENU_ALIGN_TOP).BeforeFirst('\t'),     CreateMainToolbarIcon(MainToolbarIcon::AlignTop),     TR(TB_ALIGN_TOP));
-    tb->AddTool(ID_ALIGN_BOTTOM,  TR(MENU_ALIGN_BOTTOM).BeforeFirst('\t'),  CreateMainToolbarIcon(MainToolbarIcon::AlignBottom),  TR(TB_ALIGN_BOTTOM));
-    tb->AddTool(ID_ALIGN_CENTERH, TR(MENU_ALIGN_CENTERH).BeforeFirst('\t'), CreateMainToolbarIcon(MainToolbarIcon::AlignCenterH), TR(TB_ALIGN_CENTERH));
-    tb->AddTool(ID_ALIGN_CENTERV, TR(MENU_ALIGN_CENTERV).BeforeFirst('\t'), CreateMainToolbarIcon(MainToolbarIcon::AlignCenterV), TR(TB_ALIGN_CENTERV));
+    tb->AddTool(ID_NEW,  TR(MENU_NEW).BeforeFirst('\t'),  BundleMainToolbarIcon(MainToolbarIcon::New),  TR(TB_NEW));
+    tb->AddTool(ID_OPEN, TR(MENU_OPEN).BeforeFirst('\t'), BundleMainToolbarIcon(MainToolbarIcon::Open), TR(TB_OPEN));
+    tb->AddTool(ID_SAVE, TR(MENU_SAVE).BeforeFirst('\t'), BundleMainToolbarIcon(MainToolbarIcon::Save), TR(TB_SAVE));
+    tb->AddTool(ID_UNDO, TR(MENU_UNDO).BeforeFirst('\t'), BundleMainToolbarIcon(MainToolbarIcon::Undo), TR(TB_UNDO));
+    tb->AddTool(ID_REDO, TR(MENU_REDO).BeforeFirst('\t'), BundleMainToolbarIcon(MainToolbarIcon::Redo), TR(TB_REDO));
 
     tb->AddSeparator();
 
-    tb->AddTool(ID_ZOOM_IN,  TR(MENU_ZOOM_IN).BeforeFirst('\t'),  CreateMainToolbarIcon(MainToolbarIcon::ZoomIn),  TR(TB_ZOOM_IN));
-    tb->AddTool(ID_ZOOM_OUT, TR(MENU_ZOOM_OUT).BeforeFirst('\t'), CreateMainToolbarIcon(MainToolbarIcon::ZoomOut), TR(TB_ZOOM_OUT));
-    tb->AddTool(ID_ZOOM_FIT, TR(MENU_ZOOM_FIT).BeforeFirst('\t'), CreateMainToolbarIcon(MainToolbarIcon::ZoomFit), TR(TB_ZOOM_FIT));
+    tb->AddTool(ID_ALIGN_LEFT,    TR(MENU_ALIGN_LEFT).BeforeFirst('\t'),    BundleMainToolbarIcon(MainToolbarIcon::AlignLeft),    TR(TB_ALIGN_LEFT));
+    tb->AddTool(ID_ALIGN_RIGHT,   TR(MENU_ALIGN_RIGHT).BeforeFirst('\t'),   BundleMainToolbarIcon(MainToolbarIcon::AlignRight),   TR(TB_ALIGN_RIGHT));
+    tb->AddTool(ID_ALIGN_TOP,     TR(MENU_ALIGN_TOP).BeforeFirst('\t'),     BundleMainToolbarIcon(MainToolbarIcon::AlignTop),     TR(TB_ALIGN_TOP));
+    tb->AddTool(ID_ALIGN_BOTTOM,      TR(MENU_ALIGN_BOTTOM).BeforeFirst('\t'),      BundleMainToolbarIcon(MainToolbarIcon::AlignBottom),    TR(TB_ALIGN_BOTTOM));
+    tb->AddTool(ID_ALIGN_EL_CENTERH,  TR(MENU_ALIGN_EL_CENTERH).BeforeFirst('\t'),  BundleMainToolbarIcon(MainToolbarIcon::AlignElCenterH),  TR(TB_ALIGN_EL_CENTERH));
+    tb->AddTool(ID_ALIGN_EL_CENTERV,  TR(MENU_ALIGN_EL_CENTERV).BeforeFirst('\t'),  BundleMainToolbarIcon(MainToolbarIcon::AlignElCenterV),  TR(TB_ALIGN_EL_CENTERV));
+    tb->AddTool(ID_ALIGN_CENTERH,     TR(MENU_ALIGN_CENTERH).BeforeFirst('\t'),     BundleMainToolbarIcon(MainToolbarIcon::AlignCenterH),    TR(TB_ALIGN_CENTERH));
+    tb->AddTool(ID_ALIGN_CENTERV, TR(MENU_ALIGN_CENTERV).BeforeFirst('\t'), BundleMainToolbarIcon(MainToolbarIcon::AlignCenterV), TR(TB_ALIGN_CENTERV));
+
+    tb->AddSeparator();
+
+    tb->AddTool(ID_ZOOM_IN,  TR(MENU_ZOOM_IN).BeforeFirst('\t'),  BundleMainToolbarIcon(MainToolbarIcon::ZoomIn),  TR(TB_ZOOM_IN));
+    tb->AddTool(ID_ZOOM_OUT, TR(MENU_ZOOM_OUT).BeforeFirst('\t'), BundleMainToolbarIcon(MainToolbarIcon::ZoomOut), TR(TB_ZOOM_OUT));
+    tb->AddTool(ID_ZOOM_FIT, TR(MENU_ZOOM_FIT).BeforeFirst('\t'), BundleMainToolbarIcon(MainToolbarIcon::ZoomFit), TR(TB_ZOOM_FIT));
 
     tb->Realize();
 }
@@ -219,8 +229,10 @@ void MainFrame::RefreshToolBar()
     tb->SetToolShortHelp(ID_ALIGN_LEFT,   TR(TB_ALIGN_LEFT));
     tb->SetToolShortHelp(ID_ALIGN_RIGHT,  TR(TB_ALIGN_RIGHT));
     tb->SetToolShortHelp(ID_ALIGN_TOP,    TR(TB_ALIGN_TOP));
-    tb->SetToolShortHelp(ID_ALIGN_BOTTOM, TR(TB_ALIGN_BOTTOM));
-    tb->SetToolShortHelp(ID_ALIGN_CENTERH,TR(TB_ALIGN_CENTERH));
+    tb->SetToolShortHelp(ID_ALIGN_BOTTOM,     TR(TB_ALIGN_BOTTOM));
+    tb->SetToolShortHelp(ID_ALIGN_EL_CENTERH, TR(TB_ALIGN_EL_CENTERH));
+    tb->SetToolShortHelp(ID_ALIGN_EL_CENTERV, TR(TB_ALIGN_EL_CENTERV));
+    tb->SetToolShortHelp(ID_ALIGN_CENTERH,    TR(TB_ALIGN_CENTERH));
     tb->SetToolShortHelp(ID_ALIGN_CENTERV,TR(TB_ALIGN_CENTERV));
     tb->SetToolShortHelp(ID_ZOOM_IN,      TR(TB_ZOOM_IN));
     tb->SetToolShortHelp(ID_ZOOM_OUT,     TR(TB_ZOOM_OUT));
@@ -245,8 +257,8 @@ void MainFrame::BuildPanels()
     m_auiMgr.AddPane(m_toolbox,
         wxAuiPaneInfo()
             .Name("toolbox").Caption(TR(PANEL_TOOLBOX))
-            .Left().Layer(1).BestSize(56, -1)
-            .CloseButton(false).Gripper(false));
+            .Left().Layer(1).BestSize(56, -1).MinSize(56, -1).MaxSize(56, -1)
+            .CloseButton(false).Gripper(false).Resizable(false));
 
     // Right: properties — receives pointer to canvas for undo/redo
     m_properties = new PropertiesPanel(this, m_canvas);
@@ -268,6 +280,7 @@ void MainFrame::BuildPanels()
 void MainFrame::LoadLabel(const LabelConfig& config)
 {
     m_canvas->SetLabelConfig(config);
+    m_toolbox->SetToolsEnabled(true);
     UpdateLabelStatus();
 }
 
@@ -527,7 +540,7 @@ void MainFrame::OnOptions(wxCommandEvent&)
 
 void MainFrame::OnSnapGrid(wxCommandEvent&)
 {
-    if (m_canvas) m_canvas->SetSnapToGrid(!m_canvas->GetSnapToGrid());
+    if (m_canvas) { m_canvas->SetSnapToGrid(!m_canvas->GetSnapToGrid()); UpdateZoomStatus(); }
 }
 
 void MainFrame::OnUpdateSnapGrid(wxUpdateUIEvent& evt)
@@ -551,6 +564,11 @@ void MainFrame::OnToggleZPL(wxCommandEvent& evt)
     }
 }
 
+void MainFrame::OnUpdateToggleZPL(wxUpdateUIEvent& evt)
+{
+    evt.Check(m_auiMgr.GetPane("zplcode").IsShown());
+}
+
 void MainFrame::OnZoomIn(wxCommandEvent&)
 {
     m_canvas->ZoomIn();
@@ -564,6 +582,11 @@ void MainFrame::OnZoomOut(wxCommandEvent&)
 void MainFrame::OnZoomFit(wxCommandEvent&)
 {
     m_canvas->ZoomFit();
+}
+
+void MainFrame::OnUpdateZoom(wxUpdateUIEvent& evt)
+{
+    evt.Enable(m_canvas && m_canvas->GetConfig().totalWidth() > 0);
 }
 
 void MainFrame::OnClose(wxCloseEvent& evt)
@@ -779,6 +802,16 @@ void MainFrame::OnUnits(wxCommandEvent& evt)
     UpdateLabelStatus();
 }
 
+void MainFrame::UpdateZoomStatus()
+{
+    if (!m_canvas) return;
+    wxString snapStr = m_canvas->GetSnapToGrid()
+        ? wxString::Format(TR(STATUS_SNAP_ON), m_canvas->GetSnapSize())
+        : wxString(TR(STATUS_SNAP_OFF));
+    SetStatusText(wxString::Format(TR(STATUS_ZOOM),
+        static_cast<int>(m_canvas->GetZoom() * 100.0), snapStr), 0);
+}
+
 void MainFrame::UpdateLabelStatus()
 {
     const LabelConfig& cfg = m_canvas->GetConfig();
@@ -830,6 +863,7 @@ void MainFrame::OnGridSize(wxCommandEvent& evt)
     AppConfig::Get().snapSize = newSize;
     AppConfig::Get().Save();
     m_canvas->SetSnapSize(newSize);
+    UpdateZoomStatus();
     // Rebuild menu to update the Custom label if needed
     wxMenuBar* old = GetMenuBar();
     SetMenuBar(nullptr);

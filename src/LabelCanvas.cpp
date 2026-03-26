@@ -260,6 +260,8 @@ void LabelCanvas::AlignSelected(int type)
         case 3: ny = refBottom - el->h;    break;  // align bottom edges
         case 4: nx = c.marginLeft + (c.widthDots  - el->w) / 2; break;  // center H on label
         case 5: ny = c.marginTop  + (c.heightDots - el->h) / 2; break;  // center V on label
+        case 6: ny = (refTop + refBottom) / 2 - el->h / 2;      break;  // align horizontal centers
+        case 7: nx = (refLeft + refRight) / 2 - el->w / 2;      break;  // align vertical centers
         }
         if (nx != el->x || ny != el->y)
             compound->Add(std::make_unique<MoveElementCommand>(
@@ -981,7 +983,7 @@ void LabelCanvas::OnMiddleDown(wxMouseEvent& evt)
     m_panning = true;
     m_panStartPx = evt.GetPosition();
     GetViewStart(&m_panStartScroll.x, &m_panStartScroll.y);
-    SetCursor(wxCursor(wxCURSOR_HAND));
+    SetCursor(wxCursor(wxCURSOR_SIZING));
     CaptureMouse();
 }
 

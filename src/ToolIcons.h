@@ -1,117 +1,265 @@
 #pragma once
 #include <wx/wx.h>
-#include <wx/dcmemory.h>
+#include <wx/bmpbndl.h>
 #include "ActiveTool.h"
 
-// Generates a simple wxBitmap icon for each tool by drawing into a MemoryDC.
-// Uses system button-face/text colours so it looks correct on any theme.
-inline wxBitmap CreateToolIcon(ActiveTool tool, int sz = 24)
+// All toolbar icons are rendered from embedded Lucide SVG strings via
+// wxBitmapBundle::FromSVG (NanoSVG backend in wxWidgets 3.2).
+// "currentColor" is replaced with "#1e1e1e" so NanoSVG renders the strokes.
+
+namespace {
+
+// ── Tool-button SVGs ─────────────────────────────────────────────────────────
+
+static const char kSvgSelect[] = R"svg(
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
+     fill="none" stroke="#1e1e1e" stroke-width="1.5"
+     stroke-linecap="round" stroke-linejoin="round">
+  <path d="M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z"/>
+</svg>)svg";
+
+static const char kSvgText[] = R"svg(
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
+     fill="none" stroke="#1e1e1e" stroke-width="1.5"
+     stroke-linecap="round" stroke-linejoin="round">
+  <path d="M12 4v16"/>
+  <path d="M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2"/>
+  <path d="M9 20h6"/>
+</svg>)svg";
+
+static const char kSvgBarcode[] = R"svg(
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
+     fill="none" stroke="#1e1e1e" stroke-width="1.5"
+     stroke-linecap="round" stroke-linejoin="round">
+  <path d="M3 5v14"/>
+  <path d="M8 5v14"/>
+  <path d="M12 5v14"/>
+  <path d="M17 5v14"/>
+  <path d="M21 5v14"/>
+</svg>)svg";
+
+static const char kSvgBox[] = R"svg(
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
+     fill="none" stroke="#1e1e1e" stroke-width="1.5"
+     stroke-linecap="round" stroke-linejoin="round">
+  <rect width="18" height="18" x="3" y="3" rx="2"/>
+</svg>)svg";
+
+static const char kSvgImage[] = R"svg(
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
+     fill="none" stroke="#1e1e1e" stroke-width="1.5"
+     stroke-linecap="round" stroke-linejoin="round">
+  <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
+  <circle cx="9" cy="9" r="2"/>
+  <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+</svg>)svg";
+
+// ── Main-toolbar SVGs ─────────────────────────────────────────────────────────
+
+static const char kSvgNew[] = R"svg(
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
+     fill="none" stroke="#1e1e1e" stroke-width="1.5"
+     stroke-linecap="round" stroke-linejoin="round">
+  <path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/>
+  <path d="M14 2v5a1 1 0 0 0 1 1h5"/>
+  <path d="M10 9H8"/>
+  <path d="M16 13H8"/>
+  <path d="M16 17H8"/>
+</svg>)svg";
+
+static const char kSvgOpen[] = R"svg(
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
+     fill="none" stroke="#1e1e1e" stroke-width="1.5"
+     stroke-linecap="round" stroke-linejoin="round">
+  <path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/>
+</svg>)svg";
+
+static const char kSvgSave[] = R"svg(
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
+     fill="none" stroke="#1e1e1e" stroke-width="1.5"
+     stroke-linecap="round" stroke-linejoin="round">
+  <path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/>
+  <path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/>
+  <path d="M7 3v4a1 1 0 0 0 1 1h7"/>
+</svg>)svg";
+
+static const char kSvgUndo[] = R"svg(
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
+     fill="none" stroke="#1e1e1e" stroke-width="1.5"
+     stroke-linecap="round" stroke-linejoin="round">
+  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+  <path d="M3 3v5h5"/>
+</svg>)svg";
+
+static const char kSvgRedo[] = R"svg(
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
+     fill="none" stroke="#1e1e1e" stroke-width="1.5"
+     stroke-linecap="round" stroke-linejoin="round">
+  <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/>
+  <path d="M21 3v5h-5"/>
+</svg>)svg";
+
+// Align Left  — lucide-align-start-vertical (vertical guide on left)
+static const char kSvgAlignLeft[] = R"svg(
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
+     fill="none" stroke="#1e1e1e" stroke-width="1.5"
+     stroke-linecap="round" stroke-linejoin="round">
+  <rect width="9" height="6" x="6" y="14" rx="2"/>
+  <rect width="16" height="6" x="6" y="4" rx="2"/>
+  <path d="M2 2v20"/>
+</svg>)svg";
+
+// Align Right — lucide-align-end-vertical (vertical guide on right)
+static const char kSvgAlignRight[] = R"svg(
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
+     fill="none" stroke="#1e1e1e" stroke-width="1.5"
+     stroke-linecap="round" stroke-linejoin="round">
+  <rect width="16" height="6" x="2" y="4" rx="2"/>
+  <rect width="9" height="6" x="9" y="14" rx="2"/>
+  <path d="M22 22V2"/>
+</svg>)svg";
+
+// Align Top — lucide-align-start-horizontal (horizontal guide on top)
+static const char kSvgAlignTop[] = R"svg(
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
+     fill="none" stroke="#1e1e1e" stroke-width="1.5"
+     stroke-linecap="round" stroke-linejoin="round">
+  <rect width="6" height="16" x="4" y="6" rx="2"/>
+  <rect width="6" height="9" x="14" y="6" rx="2"/>
+  <path d="M22 2H2"/>
+</svg>)svg";
+
+// Align Bottom — lucide-align-end-horizontal (horizontal guide on bottom)
+static const char kSvgAlignBottom[] = R"svg(
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
+     fill="none" stroke="#1e1e1e" stroke-width="1.5"
+     stroke-linecap="round" stroke-linejoin="round">
+  <rect width="6" height="16" x="4" y="2" rx="2"/>
+  <rect width="6" height="9" x="14" y="9" rx="2"/>
+  <path d="M22 22H2"/>
+</svg>)svg";
+
+// Align Center Horizontal — lucide-square-centerline-dashed-horizontal
+static const char kSvgAlignCenterH[] = R"svg(
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
+     fill="none" stroke="#1e1e1e" stroke-width="1.5"
+     stroke-linecap="round" stroke-linejoin="round">
+  <path d="M8 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h3"/>
+  <path d="M16 3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3"/>
+  <path d="M12 20v2"/>
+  <path d="M12 14v2"/>
+  <path d="M12 8v2"/>
+  <path d="M12 2v2"/>
+</svg>)svg";
+
+// Align Center Vertical — lucide-square-centerline-dashed-vertical
+static const char kSvgAlignCenterV[] = R"svg(
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
+     fill="none" stroke="#1e1e1e" stroke-width="1.5"
+     stroke-linecap="round" stroke-linejoin="round">
+  <path d="M21 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v3"/>
+  <path d="M21 16v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3"/>
+  <path d="M4 12H2"/>
+  <path d="M10 12H8"/>
+  <path d="M16 12h-2"/>
+  <path d="M22 12h-2"/>
+</svg>)svg";
+
+// Align Elements Horizontal Centers — lucide-align-center-horizontal
+static const char kSvgAlignElCenterH[] = R"svg(
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
+     fill="none" stroke="#1e1e1e" stroke-width="1.5"
+     stroke-linecap="round" stroke-linejoin="round">
+  <path d="M2 12h20"/>
+  <path d="M10 4H7a2 2 0 0 0-2 2v4c0 1.1.9 2 2 2h3"/>
+  <path d="M14 4h3a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-3"/>
+  <path d="M4 20h4a2 2 0 0 0 2-2v-1"/>
+  <path d="M20 20h-4a2 2 0 0 1-2-2v-1"/>
+</svg>)svg";
+
+// Align Elements Vertical Centers — lucide-align-center-vertical
+static const char kSvgAlignElCenterV[] = R"svg(
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
+     fill="none" stroke="#1e1e1e" stroke-width="1.5"
+     stroke-linecap="round" stroke-linejoin="round">
+  <path d="M12 2v20"/>
+  <path d="M8 10H4a2 2 0 0 1-2-2V6c0-1.1.9-2 2-2h4"/>
+  <path d="M16 10h4a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-4"/>
+  <path d="M8 20H7a2 2 0 0 1-2-2v-2c0-1.1.9-2 2-2h1"/>
+  <path d="M16 14h1a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-1"/>
+</svg>)svg";
+
+static const char kSvgZoomIn[] = R"svg(
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
+     fill="none" stroke="#1e1e1e" stroke-width="1.5"
+     stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="11" cy="11" r="8"/>
+  <line x1="21" x2="16.65" y1="21" y2="16.65"/>
+  <line x1="11" x2="11" y1="8" y2="14"/>
+  <line x1="8" x2="14" y1="11" y2="11"/>
+</svg>)svg";
+
+static const char kSvgZoomOut[] = R"svg(
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
+     fill="none" stroke="#1e1e1e" stroke-width="1.5"
+     stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="11" cy="11" r="8"/>
+  <line x1="21" x2="16.65" y1="21" y2="16.65"/>
+  <line x1="8" x2="14" y1="11" y2="11"/>
+</svg>)svg";
+
+static const char kSvgZoomFit[] = R"svg(
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
+     fill="none" stroke="#1e1e1e" stroke-width="1.5"
+     stroke-linecap="round" stroke-linejoin="round">
+  <path d="M3 7V5a2 2 0 0 1 2-2h2"/>
+  <path d="M17 3h2a2 2 0 0 1 2 2v2"/>
+  <path d="M21 17v2a2 2 0 0 1-2 2h-2"/>
+  <path d="M7 21H5a2 2 0 0 1-2-2v-2"/>
+  <circle cx="12" cy="12" r="3"/>
+  <path d="m16 16-1.9-1.9"/>
+</svg>)svg";
+
+} // anonymous namespace
+
+// Returns a wxBitmapBundle from an embedded SVG string.
+// Composites onto button-face background at 24 and 48 px so the toolbar gets
+// opaque bitmaps and HiDPI displays get a sharp 2× version.
+inline wxBitmapBundle BundleFromSvg(const char* svgData)
 {
-    wxBitmap bmp(sz, sz);
-    {
-        wxMemoryDC dc(bmp);
-
-        wxColour bg = wxSystemSettings::GetColour(wxSYS_COLOUR_BTNFACE);
-        wxColour fg = wxSystemSettings::GetColour(wxSYS_COLOUR_BTNTEXT);
-        wxColour ac = wxColour(0, 120, 215);   // accent blue
-
-        dc.SetBackground(wxBrush(bg));
-        dc.Clear();
-
-        const int m  = sz / 7;        // margin
-        const int w  = sz - 2 * m;    // working area width/height
-
-        switch (tool)
+    auto makeComposited = [&](int sz) -> wxBitmap {
+        wxBitmap svgBmp = wxBitmapBundle::FromSVG(svgData, wxSize(24, 24)).GetBitmap(wxSize(sz, sz));
+        wxBitmap result(sz, sz, 24);
         {
-        // ── Arrow / Select ────────────────────────────────────────────────────
-        case ActiveTool::Select:
-        {
-            dc.SetPen(wxPen(fg, 1));
-            dc.SetBrush(wxBrush(fg));
-            // ox / oy shift the whole icon inside the button.
-            // Increase ox to move right, increase oy to move down.
-            const int ox = 4, oy = 0;
-            wxPoint pts[] = {
-                wxPoint(ox+ 3, oy+ 2),   // tip
-                wxPoint(ox+ 3, oy+19),   // bottom-left of stem
-                wxPoint(ox+ 7, oy+15),   // inner notch  (where tail meets stem)
-                wxPoint(ox+10, oy+21),   // tail bottom
-                wxPoint(ox+12, oy+20),   // tail right
-                wxPoint(ox+ 9, oy+14),   // tail inner join
-                wxPoint(ox+12, oy+11),   // right shoulder
-            };
-            dc.DrawPolygon(WXSIZEOF(pts), pts);
-            break;
+            wxMemoryDC dc(result);
+            dc.SetBackground(wxBrush(wxSystemSettings::GetColour(wxSYS_COLOUR_BTNFACE)));
+            dc.Clear();
+            dc.DrawBitmap(svgBmp, 0, 0, true);
         }
-
-        // ── Text ──────────────────────────────────────────────────────────────
-        case ActiveTool::Text:
-        {
-            int thick = std::max(2, sz / 10);
-            dc.SetPen(wxPen(ac, thick, wxPENSTYLE_SOLID));
-            // Horizontal bar of the T
-            dc.DrawLine(m,       m + thick/2, m + w,     m + thick/2);
-            // Vertical stem
-            dc.DrawLine(m + w/2, m + thick/2, m + w/2,  m + w);
-            break;
-        }
-
-        // ── Barcode ───────────────────────────────────────────────────────────
-        case ActiveTool::Barcode:
-        {
-            dc.SetPen(*wxTRANSPARENT_PEN);
-            dc.SetBrush(wxBrush(fg));
-            // widths pattern: narrow/wide bars
-            static const int kW[] = { 1, 2, 1, 3, 1, 2, 1, 2, 1 };
-            int x = m;
-            for (int bw : kW)
-            {
-                if (x + bw > m + w) break;
-                dc.DrawRectangle(x, m, bw, w);
-                x += bw + 1;
-            }
-            break;
-        }
-
-        // ── Box / Rectangle ───────────────────────────────────────────────────
-        case ActiveTool::Box:
-        {
-            int thick = std::max(2, sz / 10);
-            dc.SetBrush(*wxTRANSPARENT_BRUSH);
-            dc.SetPen(wxPen(ac, thick));
-            dc.DrawRectangle(m, m, w, w);
-            break;
-        }
-
-        // ── Image ────────────────────────────────────────────────────────────
-        case ActiveTool::Image:
-        {
-            // Outer frame
-            dc.SetBrush(*wxTRANSPARENT_BRUSH);
-            dc.SetPen(wxPen(fg, 1));
-            dc.DrawRectangle(m, m, w, w);
-
-            // Mountain triangle (filled, accent)
-            dc.SetBrush(wxBrush(ac));
-            dc.SetPen(*wxTRANSPARENT_PEN);
-            wxPoint mtn[] = {
-                { m + w * 1/6,  m + w - 1  },
-                { m + w * 1/2,  m + w * 1/3 },
-                { m + w * 5/6,  m + w - 1  },
-            };
-            dc.DrawPolygon(3, mtn);
-
-            // Sun (small filled circle)
-            dc.SetBrush(wxBrush(fg));
-            dc.DrawCircle(m + w * 3/4, m + w * 1/4 + 1, std::max(2, w / 8));
-            break;
-        }
-        }
-    }
-    return bmp;
+        return result;
+    };
+    wxVector<wxBitmap> bitmaps;
+    bitmaps.push_back(makeComposited(24));
+    bitmaps.push_back(makeComposited(48));
+    return wxBitmapBundle::FromBitmaps(bitmaps);
 }
 
-// ── Main toolbar icons (New / Open / Save / Align variants) ──────────────────
+// ── Tool-button icons ─────────────────────────────────────────────────────────
+
+inline wxBitmapBundle BundleToolIcon(ActiveTool tool)
+{
+    switch (tool)
+    {
+    case ActiveTool::Select:  return BundleFromSvg(kSvgSelect);
+    case ActiveTool::Text:    return BundleFromSvg(kSvgText);
+    case ActiveTool::Barcode: return BundleFromSvg(kSvgBarcode);
+    case ActiveTool::Box:     return BundleFromSvg(kSvgBox);
+    case ActiveTool::Image:   return BundleFromSvg(kSvgImage);
+    default:                  return wxBitmapBundle();
+    }
+}
+
+// ── Main-toolbar icons ────────────────────────────────────────────────────────
 
 enum class MainToolbarIcon
 {
@@ -126,194 +274,33 @@ enum class MainToolbarIcon
     AlignBottom,
     AlignCenterH,
     AlignCenterV,
+    AlignElCenterH,
+    AlignElCenterV,
     ZoomIn,
     ZoomOut,
     ZoomFit,
 };
 
-inline wxBitmap CreateMainToolbarIcon(MainToolbarIcon icon, int sz = 24)
+inline wxBitmapBundle BundleMainToolbarIcon(MainToolbarIcon icon)
 {
-    const wxColour bg  = wxSystemSettings::GetColour(wxSYS_COLOUR_BTNFACE);
-    const wxColour ink(30, 30, 30);
-    const wxColour paper(255, 255, 255);
-    const wxColour fold(200, 200, 200);
-    const wxColour rectA(100, 160, 220);
-    const wxColour rectB(140, 200, 100);
-    const wxColour guide(210, 40, 40);
-
-    wxBitmap bmp(sz, sz, 24);
+    switch (icon)
     {
-        wxMemoryDC dc(bmp);
-        dc.SetBackground(wxBrush(bg));
-        dc.Clear();
-
-        const wxPen thinInk(ink, 1);
-        const wxPen guidePen(guide, 2);
-
-        switch (icon)
-        {
-        case MainToolbarIcon::New:
-        {
-            dc.SetPen(thinInk);
-            dc.SetBrush(wxBrush(paper));
-            wxPoint page[] = { {4,2},{17,2},{22,7},{22,22},{4,22} };
-            dc.DrawPolygon(5, page);
-            dc.SetBrush(wxBrush(fold));
-            wxPoint tri[] = { {17,2},{22,7},{17,7} };
-            dc.DrawPolygon(3, tri);
-            dc.SetPen(thinInk);
-            dc.DrawLine(17,2,17,7); dc.DrawLine(17,7,22,7);
-            dc.SetPen(wxPen(ink, 1));
-            dc.DrawLine(7,11,19,11);
-            dc.DrawLine(7,14,19,14);
-            dc.DrawLine(7,17,15,17);
-            break;
-        }
-        case MainToolbarIcon::Open:
-        {
-            const wxColour folderBack(255, 193, 60);
-            const wxColour folderFront(255, 213, 100);
-            dc.SetPen(thinInk);
-            dc.SetBrush(wxBrush(folderBack));
-            dc.DrawRectangle(2, 9, 20, 12);
-            dc.DrawRoundedRectangle(2, 6, 9, 5, 1);
-            dc.SetBrush(wxBrush(folderFront));
-            wxPoint flap[] = { {2,10},{22,10},{20,21},{4,21} };
-            dc.DrawPolygon(4, flap);
-            dc.SetPen(thinInk);
-            dc.DrawLine(2,10,22,10);
-            break;
-        }
-        case MainToolbarIcon::Save:
-        {
-            const wxColour diskBody(80, 80, 80);
-            const wxColour diskLabel(230, 230, 250);
-            const wxColour diskSlot(50, 50, 50);
-            dc.SetPen(thinInk);
-            dc.SetBrush(wxBrush(diskBody));
-            wxPoint body[] = { {3,2},{18,2},{21,5},{21,22},{3,22} };
-            dc.DrawPolygon(5, body);
-            dc.SetBrush(wxBrush(diskLabel));
-            dc.DrawRectangle(6, 3, 12, 8);
-            dc.SetPen(wxPen(diskSlot, 1));
-            dc.DrawLine(9,3,9,11);
-            dc.SetPen(thinInk);
-            dc.SetBrush(wxBrush(wxColour(140,140,140)));
-            dc.DrawRectangle(5, 14, 14, 7);
-            dc.SetPen(wxPen(wxColour(80,80,80), 1));
-            dc.DrawLine(9,14,9,21); dc.DrawLine(13,14,13,21);
-            break;
-        }
-        case MainToolbarIcon::Undo:
-        {
-            // Counter-clockwise curved arrow
-            const wxColour arrowCol(0, 100, 210);
-            dc.SetPen(wxPen(arrowCol, 2));
-            dc.SetBrush(*wxTRANSPARENT_BRUSH);
-            // Arc: left half of a circle, top portion
-            dc.DrawArc(18, 12,  6, 12,  12, 12);  // CW arc from right to left across top
-            // Arrowhead pointing down-left
-            dc.SetBrush(wxBrush(arrowCol));
-            dc.SetPen(*wxTRANSPARENT_PEN);
-            wxPoint head[] = { {4,10},{10,10},{7,16} };
-            dc.DrawPolygon(3, head);
-            break;
-        }
-        case MainToolbarIcon::Redo:
-        {
-            // Clockwise curved arrow (mirror of Undo)
-            const wxColour arrowCol(0, 100, 210);
-            dc.SetPen(wxPen(arrowCol, 2));
-            dc.SetBrush(*wxTRANSPARENT_BRUSH);
-            dc.DrawArc(6, 12,  18, 12,  12, 12);  // arc from left to right across top
-            // Arrowhead pointing down-right
-            dc.SetBrush(wxBrush(arrowCol));
-            dc.SetPen(*wxTRANSPARENT_PEN);
-            wxPoint head[] = { {14,10},{20,10},{17,16} };
-            dc.DrawPolygon(3, head);
-            break;
-        }
-        case MainToolbarIcon::AlignLeft:
-            dc.SetPen(guidePen); dc.DrawLine(4,2,4,22);
-            dc.SetPen(thinInk);
-            dc.SetBrush(wxBrush(rectA)); dc.DrawRectangle(4,4,10,6);
-            dc.SetBrush(wxBrush(rectB)); dc.DrawRectangle(4,13,15,5);
-            break;
-        case MainToolbarIcon::AlignRight:
-            dc.SetPen(guidePen); dc.DrawLine(20,2,20,22);
-            dc.SetPen(thinInk);
-            dc.SetBrush(wxBrush(rectA)); dc.DrawRectangle(10,4,10,6);
-            dc.SetBrush(wxBrush(rectB)); dc.DrawRectangle(5,13,15,5);
-            break;
-        case MainToolbarIcon::AlignTop:
-            dc.SetPen(guidePen); dc.DrawLine(2,4,22,4);
-            dc.SetPen(thinInk);
-            dc.SetBrush(wxBrush(rectA)); dc.DrawRectangle(4,4,6,10);
-            dc.SetBrush(wxBrush(rectB)); dc.DrawRectangle(13,4,5,15);
-            break;
-        case MainToolbarIcon::AlignBottom:
-            dc.SetPen(guidePen); dc.DrawLine(2,20,22,20);
-            dc.SetPen(thinInk);
-            dc.SetBrush(wxBrush(rectA)); dc.DrawRectangle(4,10,6,10);
-            dc.SetBrush(wxBrush(rectB)); dc.DrawRectangle(13,5,5,15);
-            break;
-        case MainToolbarIcon::AlignCenterH:
-            dc.SetPen(guidePen); dc.DrawLine(12,2,12,22);
-            dc.SetPen(thinInk);
-            dc.SetBrush(wxBrush(rectA)); dc.DrawRectangle(7,4,10,6);
-            dc.SetBrush(wxBrush(rectB)); dc.DrawRectangle(5,13,14,5);
-            break;
-        case MainToolbarIcon::AlignCenterV:
-            dc.SetPen(guidePen); dc.DrawLine(2,12,22,12);
-            dc.SetPen(thinInk);
-            dc.SetBrush(wxBrush(rectA)); dc.DrawRectangle(4,7,6,10);
-            dc.SetBrush(wxBrush(rectB)); dc.DrawRectangle(13,5,5,14);
-            break;
-        case MainToolbarIcon::ZoomIn:
-        {
-            // Magnifying glass
-            dc.SetPen(wxPen(ink, 2));
-            dc.SetBrush(wxBrush(paper));
-            dc.DrawCircle(9, 9, 6);
-            // + inside
-            dc.SetPen(wxPen(ink, 2));
-            dc.DrawLine(6, 9, 12, 9);
-            dc.DrawLine(9, 6, 9, 12);
-            // handle
-            dc.DrawLine(14, 14, 21, 21);
-            break;
-        }
-        case MainToolbarIcon::ZoomOut:
-        {
-            dc.SetPen(wxPen(ink, 2));
-            dc.SetBrush(wxBrush(paper));
-            dc.DrawCircle(9, 9, 6);
-            // - inside
-            dc.SetPen(wxPen(ink, 2));
-            dc.DrawLine(6, 9, 12, 9);
-            // handle
-            dc.DrawLine(14, 14, 21, 21);
-            break;
-        }
-        case MainToolbarIcon::ZoomFit:
-        {
-            dc.SetPen(wxPen(ink, 2));
-            dc.SetBrush(wxBrush(paper));
-            dc.DrawCircle(9, 9, 6);
-            // Expand arrows inside (two corner-arrows NW and SE)
-            dc.SetPen(wxPen(ink, 1));
-            dc.DrawLine(8, 8, 6, 6);
-            dc.DrawLine(6, 6, 8, 6);
-            dc.DrawLine(6, 6, 6, 8);
-            dc.DrawLine(10, 10, 12, 12);
-            dc.DrawLine(12, 12, 10, 12);
-            dc.DrawLine(12, 12, 12, 10);
-            // handle
-            dc.SetPen(wxPen(ink, 2));
-            dc.DrawLine(14, 14, 21, 21);
-            break;
-        }
-        }
+    case MainToolbarIcon::New:          return BundleFromSvg(kSvgNew);
+    case MainToolbarIcon::Open:         return BundleFromSvg(kSvgOpen);
+    case MainToolbarIcon::Save:         return BundleFromSvg(kSvgSave);
+    case MainToolbarIcon::Undo:         return BundleFromSvg(kSvgUndo);
+    case MainToolbarIcon::Redo:         return BundleFromSvg(kSvgRedo);
+    case MainToolbarIcon::AlignLeft:    return BundleFromSvg(kSvgAlignLeft);
+    case MainToolbarIcon::AlignRight:   return BundleFromSvg(kSvgAlignRight);
+    case MainToolbarIcon::AlignTop:     return BundleFromSvg(kSvgAlignTop);
+    case MainToolbarIcon::AlignBottom:  return BundleFromSvg(kSvgAlignBottom);
+    case MainToolbarIcon::AlignCenterH: return BundleFromSvg(kSvgAlignCenterH);
+    case MainToolbarIcon::AlignCenterV: return BundleFromSvg(kSvgAlignCenterV);
+    case MainToolbarIcon::AlignElCenterH: return BundleFromSvg(kSvgAlignElCenterH);
+    case MainToolbarIcon::AlignElCenterV: return BundleFromSvg(kSvgAlignElCenterV);
+    case MainToolbarIcon::ZoomIn:       return BundleFromSvg(kSvgZoomIn);
+    case MainToolbarIcon::ZoomOut:      return BundleFromSvg(kSvgZoomOut);
+    case MainToolbarIcon::ZoomFit:      return BundleFromSvg(kSvgZoomFit);
+    default:                            return wxBitmapBundle();
     }
-    return bmp;
 }

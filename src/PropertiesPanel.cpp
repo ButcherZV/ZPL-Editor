@@ -79,6 +79,8 @@ void PropertiesPanel::PopulateText(LabelElement* elBase)
     m_grid->Append(new wxIntProperty(   TR(PROP_FONT_WIDTH), "fontWidth", el->fontWidth));
     m_grid->Append(new wxBoolProperty(  TR(PROP_FONT_SIZE_LINKED), "fontSizeLinked", el->fontSizeLinked));
     m_grid->SetPropertyAttribute("fontSizeLinked", wxPG_BOOL_USE_CHECKBOX, true);
+    if (el->fontSizeLinked)
+        m_grid->EnableProperty("fontWidth", false);
 
     // Fonts category: printer font for ZPL output + system font for canvas rendering
     m_grid->Append(new wxPropertyCategory(TR(PROP_FONTS_CATEGORY)));
@@ -279,7 +281,8 @@ void PropertiesPanel::OnPropertyChanged(wxPropertyGridEvent& evt)
             bool o = t->fontSizeLinked, n = value.GetBool();
             m_canvas->ExecuteCommand(std::make_unique<EditPropertyCommand<bool>>(
                 [t]{ return t->fontSizeLinked; }, [t](bool v){ t->fontSizeLinked = v; }, o, n));
-            // When linking is enabled, immediately sync width = height
+            // When linking is enabled, immediately sync width = height and lock the field
+            m_grid->EnableProperty("fontWidth", !n);
             if (n)
             {
                 int ow = t->fontWidth;

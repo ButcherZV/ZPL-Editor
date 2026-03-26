@@ -38,6 +38,8 @@ enum class StrId
     MENU_ALIGN_BOTTOM,
     MENU_ALIGN_CENTERH,
     MENU_ALIGN_CENTERV,
+    MENU_ALIGN_EL_CENTERH,
+    MENU_ALIGN_EL_CENTERV,
     MENU_OPTIONS,
 
     // ── Menu – View ───────────────────────────────────────────────────────────
@@ -205,6 +207,8 @@ enum class StrId
     TB_ALIGN_BOTTOM,
     TB_ALIGN_CENTERH,
     TB_ALIGN_CENTERV,
+    TB_ALIGN_EL_CENTERH,
+    TB_ALIGN_EL_CENTERV,
     TB_ZOOM_IN,
     TB_ZOOM_OUT,
     TB_ZOOM_FIT,

@@ -37,19 +37,21 @@ ToolboxPanel::ToolboxPanel(wxWindow* parent)
 
     const int ids[]  = { ID_BTN_SELECT, ID_BTN_TEXT, ID_BTN_BARCODE,
                          ID_BTN_BOX,    ID_BTN_IMAGE };
-    const int iconSz = 24;
     const int btnSz  = 42;
 
     for (int i = 0; i < 5; ++i)
     {
-        wxBitmap icon = CreateToolIcon(kTools[i], iconSz);
-        m_buttons[i]  = new wxToggleButton(this, ids[i], wxEmptyString,
-                                           wxDefaultPosition, wxSize(btnSz, btnSz));
-        m_buttons[i]->SetBitmap(icon);
+        m_buttons[i] = new wxToggleButton(this, ids[i], wxEmptyString,
+                                          wxDefaultPosition, wxSize(btnSz, btnSz));
+        m_buttons[i]->SetBitmap(BundleToolIcon(kTools[i]));
+        m_buttons[i]->SetBitmapMargins(9, 9);
         m_buttons[i]->SetToolTip(kTooltips[i]);
         sizer->Add(m_buttons[i], 0, wxALL | wxALIGN_CENTER, 3);
     }
     m_buttons[0]->SetValue(true);  // Select is default
+    // Disabled until a label is loaded
+    for (int i = 0; i < 5; ++i)
+        m_buttons[i]->Enable(false);
     SetSizer(sizer);
 }
 
@@ -73,6 +75,12 @@ void ToolboxPanel::RefreshLanguage()
     };
     for (int i = 0; i < 5; ++i)
         m_buttons[i]->SetToolTip(tips[i]);
+}
+
+void ToolboxPanel::SetToolsEnabled(bool enabled)
+{
+    for (int i = 0; i < 5; ++i)
+        m_buttons[i]->Enable(enabled);
 }
 
 void ToolboxPanel::OnToggle(wxCommandEvent& evt)

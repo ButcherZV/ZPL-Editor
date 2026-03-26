@@ -206,7 +206,7 @@ NewLabelDialog::NewLabelDialog(wxWindow* parent)
 
 void NewLabelDialog::PopulatePrinters()
 {
-    m_printerChoice->Append("(manual — enter DPI below)");
+    m_printerChoice->Append(TR(NEWLABEL_MANUAL));
 
 #ifdef _WIN32
     // Use level 4: only pPrinterName + Attributes, no DEVMODE, no security —

@@ -71,6 +71,7 @@ set(SOURCES
 
 # ── Executable ────────────────────────────────────────────────────────────────
 if(WIN32)
+    list(APPEND SOURCES app.rc)
     add_executable(ZPLEditor WIN32 ${SOURCES})
 else()
     add_executable(ZPLEditor ${SOURCES})
