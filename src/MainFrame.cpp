@@ -8,6 +8,8 @@
 #include "I18n.h"
 #include "dialogs/NewLabelDialog.h"
 #include "dialogs/AppOptionsDialog.h"
+#include "dialogs/HelpDialog.h"
+#include "dialogs/AboutDialog.h"
 #include "zpl/ZPLSerializer.h"
 #include "zpl/ZPLParser.h"
 #include <wx/filedlg.h>
@@ -51,6 +53,8 @@ wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
     EVT_MENU_RANGE(ID_LANG_ENGLISH, ID_LANG_SERBIAN,   MainFrame::OnLanguage)
     EVT_MENU_RANGE(ID_UNITS_METRIC, ID_UNITS_IMPERIAL, MainFrame::OnUnits)
     EVT_MENU_RANGE(ID_GRID_2,       ID_GRID_CUSTOM,    MainFrame::OnGridSize)
+    EVT_MENU(ID_HELP_CONTENTS,   MainFrame::OnHelp)
+    EVT_MENU(ID_ABOUT,           MainFrame::OnAbout)
     EVT_CLOSE(               MainFrame::OnClose)
 wxEND_EVENT_TABLE()
 
@@ -179,6 +183,13 @@ void MainFrame::BuildMenuBar()
     opts->AppendSubMenu(gridSub, TR(MENU_GRID_SIZE));
 
     mb->Append(opts, TR(MENU_OPTIONS_MENU));
+
+    // Help
+    auto* help = new wxMenu();
+    help->Append(ID_HELP_CONTENTS, TR(MENU_HELP_CONTENTS));
+    help->AppendSeparator();
+    help->Append(ID_ABOUT, TR(MENU_ABOUT));
+    mb->Append(help, TR(MENU_HELP));
 
     SetMenuBar(mb);
 }
@@ -869,4 +880,16 @@ void MainFrame::OnGridSize(wxCommandEvent& evt)
     SetMenuBar(nullptr);
     delete old;
     BuildMenuBar();
+}
+
+void MainFrame::OnHelp(wxCommandEvent&)
+{
+    HelpDialog dlg(this);
+    dlg.ShowModal();
+}
+
+void MainFrame::OnAbout(wxCommandEvent&)
+{
+    AboutDialog dlg(this);
+    dlg.ShowModal();
 }

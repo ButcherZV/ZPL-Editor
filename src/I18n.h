@@ -251,6 +251,19 @@ enum class StrId
     UNSAVED_TITLE,
     UNSAVED_MSG,
 
+    // ── Help menu ────────────────────────────────────────
+    MENU_HELP,
+    MENU_HELP_CONTENTS,
+    MENU_ABOUT,
+    HELP_TITLE,
+
+    // ── About dialog ─────────────────────────────────────
+    ABOUT_TITLE,
+    ABOUT_VERSION,
+    ABOUT_AUTHOR,
+    ABOUT_DESC,
+    ABOUT_GITHUB,
+
     COUNT   // must be last
 };
 

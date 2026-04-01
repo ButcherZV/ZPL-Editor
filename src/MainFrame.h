@@ -65,6 +65,9 @@ private:
         ID_GRID_5,
         ID_GRID_10,
         ID_GRID_CUSTOM,
+
+        ID_HELP_CONTENTS  = wxID_HIGHEST + 70,
+        ID_ABOUT,
     };
 
     void BuildMenuBar();
@@ -103,6 +106,8 @@ private:
     void OnUnits(wxCommandEvent&);
     void OnGridSize(wxCommandEvent&);
     void OnCanvasMouseMove(wxMouseEvent&);
+    void OnHelp(wxCommandEvent&);
+    void OnAbout(wxCommandEvent&);
 
     // Updates status bar field 1 with dots + unit-specific dimensions.
     void UpdateLabelStatus();

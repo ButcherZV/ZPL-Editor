@@ -231,6 +231,17 @@ static const wchar_t* const kEn[] =
 
     /* UNSAVED_TITLE        */ L"Unsaved Changes",
     /* UNSAVED_MSG          */ L"The current label has unsaved changes.\nDo you want to save before continuing?",
+
+    /* MENU_HELP            */ L"&Help",
+    /* MENU_HELP_CONTENTS   */ L"&Help Contents\tF1",
+    /* MENU_ABOUT           */ L"&About ZPL Editor...",
+    /* HELP_TITLE           */ L"ZPL Editor Help",
+
+    /* ABOUT_TITLE          */ L"About ZPL Editor",
+    /* ABOUT_VERSION        */ L"Version",
+    /* ABOUT_AUTHOR         */ L"Author",
+    /* ABOUT_DESC           */ L"A WYSIWYG label designer for Zebra ZPL printers.",
+    /* ABOUT_GITHUB         */ L"GitHub Repository",
 };
 
 static const wchar_t* const kSr[] =
@@ -285,16 +296,16 @@ static const wchar_t* const kSr[] =
     /* STATUS_ZOOM          */ L"Zum: %d%%%s",
     /* STATUS_PRINT_SENT    */ L"Poslato %zu bajtova na %s",
 
-    /* TOOL_SELECT          */ L"Izbor",
+    /* TOOL_SELECT          */ L"Izaberi",
     /* TOOL_TEXT            */ L"Tekst",
     /* TOOL_BARCODE         */ L"Barkod",
-    /* TOOL_BOX             */ L"Okvir",
+    /* TOOL_BOX             */ L"Linija/Okvir",
     /* TOOL_IMAGE           */ L"Slika",
     /* TOOLTIP_SELECT       */ L"Izaberi / Pomeri  [V ili Esc]",
-    /* TOOLTIP_TEXT         */ L"Postavi element Tekst  [T]",
-    /* TOOLTIP_BARCODE      */ L"Postavi element Barkod  [B]",
-    /* TOOLTIP_BOX          */ L"Postavi element Okvir  [R]",
-    /* TOOLTIP_IMAGE        */ L"Postavi element Slika  [I]",
+    /* TOOLTIP_TEXT         */ L"Ubaci Tekst [T]",
+    /* TOOLTIP_BARCODE      */ L"Ubaci Barkod [B]",
+    /* TOOLTIP_BOX          */ L"Ubaci Liniju/Okvir [R]",
+    /* TOOLTIP_IMAGE        */ L"Ubaci Sliku [I]",
 
     /* PROP_PANEL_TITLE     */ L"Svojstva",
     /* PROP_POS_SIZE        */ L"Pozicija / Veličina",
@@ -453,6 +464,17 @@ static const wchar_t* const kSr[] =
 
     /* UNSAVED_TITLE        */ L"Nesačuvane Promene",
     /* UNSAVED_MSG          */ L"Etiketa ima nesačuvane promene.\nDa li želite da je sačuvate pre nego što nastavite?",
+
+    /* MENU_HELP            */ L"&Pomo\u0107",
+    /* MENU_HELP_CONTENTS   */ L"&Sadr\u017eaj Pomo\u0107i\tF1",
+    /* MENU_ABOUT           */ L"&O programu ZPL Editor...",
+    /* HELP_TITLE           */ L"Pomo\u0107 - ZPL Editor",
+
+    /* ABOUT_TITLE          */ L"O programu ZPL Editor",
+    /* ABOUT_VERSION        */ L"Verzija",
+    /* ABOUT_AUTHOR         */ L"Autor",
+    /* ABOUT_DESC           */ L"WYSIWYG dizajner etiketa za Zebra ZPL štampače.",
+    /* ABOUT_GITHUB         */ L"GitHub Repozitorijum",
 };
 
 static_assert(

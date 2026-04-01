@@ -21,7 +21,7 @@ if(NOT DEFINED wxWidgets_CONFIG_EXECUTABLE)
 endif()
 
 find_package(wxWidgets REQUIRED
-    COMPONENTS core base aui propgrid adv
+    COMPONENTS core base aui propgrid adv html
 )
 include(${wxWidgets_USE_FILE})
 
@@ -67,6 +67,8 @@ set(SOURCES
 
     src/dialogs/NewLabelDialog.cpp
     src/dialogs/AppOptionsDialog.cpp
+    src/dialogs/HelpDialog.cpp
+    src/dialogs/AboutDialog.cpp
 )
 
 # ── Executable ────────────────────────────────────────────────────────────────

@@ -11,6 +11,7 @@ namespace {
 
 // ── Tool-button SVGs ─────────────────────────────────────────────────────────
 
+// Move/Select Tool
 static const char kSvgSelect[] = R"svg(
 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
      fill="none" stroke="#1e1e1e" stroke-width="1.5"
@@ -18,6 +19,7 @@ static const char kSvgSelect[] = R"svg(
   <path d="M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z"/>
 </svg>)svg";
 
+// Text Element
 static const char kSvgText[] = R"svg(
 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
      fill="none" stroke="#1e1e1e" stroke-width="1.5"
@@ -27,6 +29,7 @@ static const char kSvgText[] = R"svg(
   <path d="M9 20h6"/>
 </svg>)svg";
 
+// Barcode Element
 static const char kSvgBarcode[] = R"svg(
 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
      fill="none" stroke="#1e1e1e" stroke-width="1.5"
@@ -38,6 +41,7 @@ static const char kSvgBarcode[] = R"svg(
   <path d="M21 5v14"/>
 </svg>)svg";
 
+// Box Element
 static const char kSvgBox[] = R"svg(
 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
      fill="none" stroke="#1e1e1e" stroke-width="1.5"
@@ -45,6 +49,7 @@ static const char kSvgBox[] = R"svg(
   <rect width="18" height="18" x="3" y="3" rx="2"/>
 </svg>)svg";
 
+// Image Element
 static const char kSvgImage[] = R"svg(
 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
      fill="none" stroke="#1e1e1e" stroke-width="1.5"
@@ -67,6 +72,7 @@ static const char kSvgNew[] = R"svg(
   <path d="M16 17H8"/>
 </svg>)svg";
 
+// Open
 static const char kSvgOpen[] = R"svg(
 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
      fill="none" stroke="#1e1e1e" stroke-width="1.5"
@@ -74,6 +80,7 @@ static const char kSvgOpen[] = R"svg(
   <path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/>
 </svg>)svg";
 
+// Save
 static const char kSvgSave[] = R"svg(
 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
      fill="none" stroke="#1e1e1e" stroke-width="1.5"
@@ -83,6 +90,7 @@ static const char kSvgSave[] = R"svg(
   <path d="M7 3v4a1 1 0 0 0 1 1h7"/>
 </svg>)svg";
 
+// Undo
 static const char kSvgUndo[] = R"svg(
 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
      fill="none" stroke="#1e1e1e" stroke-width="1.5"
@@ -91,6 +99,7 @@ static const char kSvgUndo[] = R"svg(
   <path d="M3 3v5h5"/>
 </svg>)svg";
 
+// Redo
 static const char kSvgRedo[] = R"svg(
 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
      fill="none" stroke="#1e1e1e" stroke-width="1.5"
@@ -189,6 +198,7 @@ static const char kSvgAlignElCenterV[] = R"svg(
   <path d="M16 14h1a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-1"/>
 </svg>)svg";
 
+// Zoom in
 static const char kSvgZoomIn[] = R"svg(
 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
      fill="none" stroke="#1e1e1e" stroke-width="1.5"
@@ -199,6 +209,7 @@ static const char kSvgZoomIn[] = R"svg(
   <line x1="8" x2="14" y1="11" y2="11"/>
 </svg>)svg";
 
+// Zoom out
 static const char kSvgZoomOut[] = R"svg(
 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
      fill="none" stroke="#1e1e1e" stroke-width="1.5"
@@ -208,6 +219,7 @@ static const char kSvgZoomOut[] = R"svg(
   <line x1="8" x2="14" y1="11" y2="11"/>
 </svg>)svg";
 
+// Zoom to Fit
 static const char kSvgZoomFit[] = R"svg(
 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
      fill="none" stroke="#1e1e1e" stroke-width="1.5"
@@ -220,7 +232,7 @@ static const char kSvgZoomFit[] = R"svg(
   <path d="m16 16-1.9-1.9"/>
 </svg>)svg";
 
-} // anonymous namespace
+}
 
 // Returns a wxBitmapBundle from an embedded SVG string.
 // Composites onto button-face background at 24 and 48 px so the toolbar gets
